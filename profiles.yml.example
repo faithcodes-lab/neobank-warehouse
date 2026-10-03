@@ -1,0 +1,31 @@
+# dbt connection settings. Lives outside the repo because it points at a real
+# cloud account. The repo holds profiles.yml.example instead.
+#
+# Two targets, matching the two long lived branches:
+#   dev   is what the develop branch and feature branches build into
+#   prod  is what main builds into, and is what anything downstream would read
+#
+# Datasets are named differently so a dev run can never overwrite prod tables.
+
+neobank_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: REPLACE_ME
+      dataset: dbt_dev
+      location: EU
+      threads: 4
+      timeout_seconds: 300
+      priority: interactive
+
+    prod:
+      type: bigquery
+      method: oauth
+      project: REPLACE_ME
+      dataset: analytics
+      location: EU
+      threads: 4
+      timeout_seconds: 300
+      priority: interactive

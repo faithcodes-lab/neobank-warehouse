@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Refuses commits made directly on a protected branch.
+#
+# main and develop are only ever written to by merging a pull request. Committing
+# to them locally bypasses review and puts the branch ahead of its remote, which
+# then needs reconciling by hand.
+#
+# Merges are allowed through, because resolving a merge produces a legitimate
+# commit on the target branch.
+
+set -uo pipefail
+
+PROTECTED="main develop"
+
+# Current branch name. Returns empty during a detached HEAD, for example mid rebase.
+branch=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
+[ -z "$branch" ] && exit 0
+
+# A merge in progress writes MERGE_HEAD. Cherry picks and reverts have their own
+# marker files. None of these should be blocked: the commit is the resolution of
+# an operation that is already underway.
+git_dir=$(git rev-parse --git-dir)
+for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD; do
+  [ -f "$git_dir/$marker" ] && exit 0
+done
+
+for p in $PROTECTED; do
+  if [ "$branch" = "$p" ]; then
+    cat >&2 <<EOF
+BLOCKED: direct commit to "$branch".
+
+Work on a branch and open a pull request:
+
+    git checkout -b feat/short-description
+    git add -A && git commit
+
+If you have already staged changes, that branch takes them with you.
+
+To override in a genuine emergency: git commit --no-verify
+EOF
+    exit 1
+  fi
+done
+
+exit 0

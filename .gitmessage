@@ -1,0 +1,8 @@
+
+# Subject: imperative, lower case, under 60 chars. No full stop.
+#   add scd2 snapshot for dim_account
+#   fix null merchant handling in stg_transactions
+#   bump dbt-bigquery to 1.12.1
+#
+# Body (optional): only when the why is not obvious from the diff.
+# Two or three plain sentences, not a bullet list of what changed.

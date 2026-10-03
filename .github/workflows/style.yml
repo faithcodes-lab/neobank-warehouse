@@ -1,0 +1,16 @@
+name: style
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check prose and commit style
+        run: |
+          chmod +x scripts/check-style.sh
+          ./scripts/check-style.sh tree

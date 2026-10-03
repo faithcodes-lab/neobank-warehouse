@@ -1,0 +1,35 @@
+name: neobank_warehouse
+version: 1.0.0
+config-version: 2
+
+profile: neobank_warehouse
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Push model and column descriptions into BigQuery itself, so the warehouse is
+# documented where people actually look rather than only in dbt docs.
+models:
+  neobank_warehouse:
+    +persist_docs:
+      relation: true
+      columns: true
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
+
+# Tag every query dbt issues so cost can be attributed per model later.
+query-comment:
+  comment: "{{ query_comment(node) }}"
+  job-label: true
