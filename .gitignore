@@ -10,3 +10,7 @@ __pycache__/
 *.json
 !package-lock.json
 .env
+
+# editor and tool leftovers
+.Rhistory
+.Rproj.user/
