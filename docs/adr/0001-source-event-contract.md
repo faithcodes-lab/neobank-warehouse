@@ -29,7 +29,7 @@ Four services plus one reference table:
 ### Snapshots for customer and account
 
 A warehouse usually receives a daily extract of current state for dimensions rather than the
-underlying change events, because reconstructing current state by replaying a long event history
+change events behind them, because rebuilding current state by replaying a long event history
 is slow and expensive. So that is what I am simulating.
 
 The consequence is that a change is not announced. If a customer moves from Ireland to France, I
@@ -44,12 +44,12 @@ different amounts. Collapsing them into one record would lose that, so each is i
 ### Merchant is reference data, not events
 
 The bank does not manage merchants. Tesco is not a customer of the bank. What arrives with a card
-authorisation is a category code and an untidy merchant string from the payment network, something
+authorisation is a category code and a messy merchant string from the payment network, something
 like `TESCO STORES 3456 BRISTOL GB`. The clean name and the friendly category are things the bank
 works out afterwards and maintains itself.
 
 That makes merchant data different in kind from the rest. It changes slowly, nothing emits it, and
-nobody should be alarmed if it is unchanged for a week. Transactions going quiet for an hour is an
+nobody should worry if it is unchanged for a week. Transactions going quiet for an hour is an
 incident. The freshness checks have to differ accordingly.
 
 ## Card authorisation event
