@@ -14,3 +14,6 @@ __pycache__/
 # editor and tool leftovers
 .Rhistory
 .Rproj.user/
+
+# generated output, reproducible by running the generator
+data/
