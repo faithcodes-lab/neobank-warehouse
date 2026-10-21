@@ -30,6 +30,10 @@ transformation turns out to be wrong, the whole warehouse can be rebuilt from it
 back to the source systems. Staging is mechanical and holds no business logic. Marts is where
 modelling decisions live.
 
+[docs/architecture.md](docs/architecture.md) has the full picture: every model and where it comes
+from, plus the card payment sequence that makes the modelling awkward, since one tap produces two
+events days apart with possibly different amounts.
+
 ## Source data
 
 A generator produces events in the shape real services emit them, which means imperfect by
