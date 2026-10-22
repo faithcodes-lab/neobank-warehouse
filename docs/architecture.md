@@ -8,12 +8,23 @@ All are written in Mermaid, which GitHub renders in the browser.
 
 ## What actually runs
 
-There are no real backend services here. One Python program stands in for all of them, writing
-files that look like what a bank's services would send.
+In a real bank, data appears because people do things. Someone taps a card, someone opens an
+account, a shop claims its money. Backend services record each of those.
+
+There are no real people here and no real services. One Python program stands in for the lot,
+writing files that look like what those services would have sent.
 
 ```mermaid
 flowchart TD
-    gen["generator<br/>one Python program<br/>you run it by hand"]
+    subgraph world["What happens in a real bank"]
+        w1["a customer signs up<br/>or changes their address"]
+        w2["someone opens or closes<br/>a current or savings account"]
+        w3["a customer taps their card<br/>at a till"]
+        w4["a shop claims the money<br/>it is owed, in a daily batch"]
+        w5["a shop gets paid by a customer<br/>for the first time"]
+    end
+
+    gen["generator<br/>one Python program<br/>pretends all of the above happened"]
 
     subgraph out["what it writes, NDJSON files on disk"]
         f1["customers<br/>one file per day"]
@@ -24,16 +35,27 @@ flowchart TD
     end
 
     load["bq load<br/>sends each file to BigQuery"]
-    rawl[("BigQuery raw<br/>one table per file")]
-    dbt["dbt run<br/>builds staging then marts"]
+    rawt[("BigQuery raw<br/>one table per file")]
+    dbtrun["dbt run<br/>builds staging then marts"]
     final[("BigQuery marts<br/>the tables you query")]
 
+    w1 & w2 & w3 & w4 & w5 --> gen
     gen --> f1 & f2 & f3 & f4 & f5
     f1 & f2 & f3 & f4 & f5 --> load
-    load --> rawl
-    rawl --> dbt
-    dbt --> final
+    load --> rawt
+    rawt --> dbtrun
+    dbtrun --> final
 ```
+
+The top row is what the generator is imitating. Each real world action becomes one kind of file:
+
+| What happens | Becomes |
+|---|---|
+| a customer signs up or moves house | the customer file |
+| someone opens or closes an account | the account file |
+| a customer taps their card | the card authorisations file |
+| a shop claims its money | the payments file |
+| a shop is paid for the first time | a new row in the merchant file |
 
 Three things you run, in order:
 
