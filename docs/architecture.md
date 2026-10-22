@@ -1,8 +1,8 @@
 # Architecture
 
-Three diagrams. The first shows what runs and in what order. The second shows every table and
-where it comes from. The third shows the card payment lifecycle, which is the thing that makes the
-modelling awkward.
+Two diagrams. The first shows the whole pipeline, from something happening in a bank through to
+the tables people query. The second shows the card payment lifecycle, which is the thing that
+makes the modelling awkward.
 
 All are written in Mermaid, which GitHub renders in the browser.
 
@@ -18,53 +18,85 @@ writing files that look like what those services would have sent.
 flowchart TD
     subgraph world["1. What happens in a real bank"]
         w1["a customer signs up<br/>or changes their address"]
-        w2["someone opens or closes<br/>a current or savings account"]
+        w2["someone opens or closes<br/>an account"]
         w3["a customer taps their card<br/>at a till"]
         w4["a shop claims the money<br/>it is owed, in a daily batch"]
     end
 
     subgraph svc["2. The service that records it"]
-        s1["customer service<br/>holds who people are"]
-        s2["account service<br/>holds what they hold"]
-        s3["card service<br/>approves or declines in 200ms"]
-        s4["payment service<br/>moves the money, in batches"]
-        s5["merchant list<br/>built up by the bank itself"]
+        c1["customer service"]
+        c2["account service"]
+        c3["card service"]
+        c4["payment service"]
+        c5["merchant list<br/>built up by the bank"]
     end
 
     gen["the generator stands in for all five<br/>one Python program, no real bank"]
 
-    subgraph out["3. What comes out, NDJSON files on disk"]
+    subgraph files["3. NDJSON files on disk"]
         f1["customers<br/>daily snapshot"]
         f2["accounts<br/>daily snapshot"]
         f3["card authorisations<br/>events"]
-        f4["payments<br/>settlement events"]
-        f5["merchants<br/>one file, no date"]
+        f4["payments<br/>events"]
+        f5["merchants<br/>no date"]
     end
 
-    load["4. bq load<br/><i>BigQuery load job</i>"]
-    rawt[("5. raw tables<br/>never edited<br/><i>BigQuery storage</i>")]
-    dbtrun["6. dbt run<br/><i>BigQuery query jobs</i>"]
-    stg["7. staging views<br/>renamed, typed, duplicates removed<br/><i>metadata only, no storage</i>"]
-    final[("8. marts<br/>the tables people query<br/><i>BigQuery storage</i>")]
+    load["4. bq load"]
 
-    w1 --> s1
-    w2 --> s2
-    w3 --> s3
-    w4 --> s4
+    subgraph raw["5. BigQuery raw, never edited"]
+        r1[("raw_customers")]
+        r2[("raw_accounts")]
+        r3[("raw_card_authorisations")]
+        r4[("raw_payments")]
+        r5[("raw_merchants")]
+    end
 
-    s1 --> f1
-    s2 --> f2
-    s3 --> f3
-    s4 --> f4
-    s5 --> f5
+    dbtrun["6. dbt run"]
 
-    gen -.-> s1 & s2 & s3 & s4 & s5
+    subgraph staging["7. staging, views, no storage"]
+        g1["stg_customers"]
+        g2["stg_accounts"]
+        g3["stg_card_authorisations"]
+        g4["stg_payments"]
+        g5["stg_merchants"]
+    end
+
+    subgraph marts["8. marts, tables people query"]
+        d1["dim_customer<br/>SCD2"]
+        d2["dim_account<br/>SCD2"]
+        d3["dim_merchant"]
+        d4["dim_date<br/>generated, no source"]
+        t1["fct_card_authorisations"]
+        t2["fct_transactions"]
+        t3["fct_account_daily_balance"]
+    end
+
+    w1 --> c1
+    w2 --> c2
+    w3 --> c3
+    w4 --> c4
+    gen -.-> c1 & c2 & c3 & c4 & c5
+
+    c1 --> f1
+    c2 --> f2
+    c3 --> f3
+    c4 --> f4
+    c5 --> f5
 
     f1 & f2 & f3 & f4 & f5 --> load
-    load --> rawt
-    rawt --> dbtrun
-    dbtrun --> stg
-    stg --> final
+    load --> r1 & r2 & r3 & r4 & r5
+    r1 & r2 & r3 & r4 & r5 --> dbtrun
+
+    dbtrun --> g1 & g2 & g3 & g4 & g5
+
+    g1 --> d1
+    g2 --> d2
+    g5 --> d3
+    g3 --> t1
+    g3 --> t2
+    g4 --> t2
+    g2 --> t3
+    g4 --> t3
 ```
 
 Steps 1 to 3 happen on a laptop. Everything from step 4 onwards is BigQuery, which is the only
@@ -90,58 +122,6 @@ Three things you run, in order:
 1. `python generator/...` writes the files
 2. `bq load` puts them in BigQuery
 3. `dbt run` builds everything on top
-
-## Every table and where it comes from
-
-Same pipeline, now showing each table rather than each step.
-
-```mermaid
-flowchart TD
-    gen["generator"]
-
-    subgraph raw["BigQuery raw<br/>exactly what arrived, never edited"]
-        r1[("raw_customers")]
-        r2[("raw_accounts")]
-        r3[("raw_card_authorisations")]
-        r4[("raw_payments")]
-        r5[("raw_merchants")]
-    end
-
-    subgraph staging["dbt staging<br/>views, renamed and typed, duplicates removed"]
-        s1["stg_customers"]
-        s2["stg_accounts"]
-        s3["stg_card_authorisations"]
-        s4["stg_payments"]
-        s5["stg_merchants"]
-    end
-
-    subgraph marts["dbt marts<br/>tables, the ones people query"]
-        d1["dim_customer<br/>SCD2"]
-        d2["dim_account<br/>SCD2"]
-        d3["dim_merchant"]
-        d4["dim_date<br/>generated, no source"]
-        ft1["fct_card_authorisations"]
-        ft2["fct_transactions"]
-        ft3["fct_account_daily_balance"]
-    end
-
-    gen --> r1 & r2 & r3 & r4 & r5
-
-    r1 --> s1
-    r2 --> s2
-    r3 --> s3
-    r4 --> s4
-    r5 --> s5
-
-    s1 --> d1
-    s2 --> d2
-    s5 --> d3
-    s3 --> ft1
-    s3 --> ft2
-    s4 --> ft2
-    s2 --> ft3
-    s4 --> ft3
-```
 
 Worth noticing:
 
