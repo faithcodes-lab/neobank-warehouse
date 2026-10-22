@@ -16,35 +16,55 @@ writing files that look like what those services would have sent.
 
 ```mermaid
 flowchart TD
-    subgraph world["What happens in a real bank"]
+    subgraph world["1. What happens in a real bank"]
         w1["a customer signs up<br/>or changes their address"]
         w2["someone opens or closes<br/>a current or savings account"]
         w3["a customer taps their card<br/>at a till"]
         w4["a shop claims the money<br/>it is owed, in a daily batch"]
-        w5["a shop gets paid by a customer<br/>for the first time"]
     end
 
-    gen["generator<br/>one Python program<br/>pretends all of the above happened"]
+    subgraph svc["2. The service that records it"]
+        s1["customer service<br/>holds who people are"]
+        s2["account service<br/>holds what they hold"]
+        s3["card service<br/>approves or declines in 200ms"]
+        s4["payment service<br/>moves the money, in batches"]
+        s5["merchant list<br/>built up by the bank itself"]
+    end
 
-    subgraph out["what it writes, NDJSON files on disk"]
-        f1["customers<br/>one file per day"]
-        f2["accounts<br/>one file per day"]
-        f3["card authorisations<br/>one file per day"]
-        f4["payments<br/>one file per day"]
+    gen["the generator stands in for all five<br/>one Python program, no real bank"]
+
+    subgraph out["3. What comes out, NDJSON files on disk"]
+        f1["customers<br/>daily snapshot"]
+        f2["accounts<br/>daily snapshot"]
+        f3["card authorisations<br/>events"]
+        f4["payments<br/>settlement events"]
         f5["merchants<br/>one file, no date"]
     end
 
-    load["bq load<br/>sends each file to BigQuery"]
-    rawt[("BigQuery raw<br/>one table per file")]
-    dbtrun["dbt run<br/>builds staging then marts"]
-    final[("BigQuery marts<br/>the tables you query")]
+    load["4. bq load<br/>sends each file to BigQuery"]
+    rawt[("5. BigQuery raw<br/>one table per file, never edited")]
+    dbtrun["6. dbt run"]
+    stg[("7. staging<br/>renamed, typed, duplicates removed")]
+    final[("8. marts<br/>the tables people query")]
 
-    w1 & w2 & w3 & w4 & w5 --> gen
-    gen --> f1 & f2 & f3 & f4 & f5
+    w1 --> s1
+    w2 --> s2
+    w3 --> s3
+    w4 --> s4
+
+    s1 --> f1
+    s2 --> f2
+    s3 --> f3
+    s4 --> f4
+    s5 --> f5
+
+    gen -.-> s1 & s2 & s3 & s4 & s5
+
     f1 & f2 & f3 & f4 & f5 --> load
     load --> rawt
     rawt --> dbtrun
-    dbtrun --> final
+    dbtrun --> stg
+    stg --> final
 ```
 
 The top row is what the generator is imitating. Each real world action becomes one kind of file:
