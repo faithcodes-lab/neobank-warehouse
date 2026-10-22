@@ -1,31 +1,57 @@
 # Architecture
 
-Two views of the same system. The flow diagram shows where data goes. The sequence diagram shows
-the card payment lifecycle that makes the modelling awkward.
+Three diagrams. The first shows what runs and in what order. The second shows every table and
+where it comes from. The third shows the card payment lifecycle, which is the thing that makes the
+modelling awkward.
 
-Both are written in Mermaid, which GitHub renders directly in the browser.
+All are written in Mermaid, which GitHub renders in the browser.
 
-## Data flow
+## What actually runs
+
+There are no real backend services here. One Python program stands in for all of them, writing
+files that look like what a bank's services would send.
 
 ```mermaid
 flowchart TD
-    subgraph sources["Simulated backend services"]
-        cust["customer service<br/>daily snapshot"]
-        acct["account service<br/>daily snapshot"]
-        card["card service<br/>authorisation events"]
-        pay["payment service<br/>settlement events"]
-        mer["merchant reference<br/>lookup, rarely changes"]
+    gen["generator<br/>one Python program<br/>you run it by hand"]
+
+    subgraph out["what it writes, NDJSON files on disk"]
+        f1["customers<br/>one file per day"]
+        f2["accounts<br/>one file per day"]
+        f3["card authorisations<br/>one file per day"]
+        f4["payments<br/>one file per day"]
+        f5["merchants<br/>one file, no date"]
     end
 
-    subgraph files["NDJSON files on disk"]
-        f1["data/customers/2026-03-01.ndjson"]
-        f2["data/accounts/2026-03-01.ndjson"]
-        f3["data/card_authorisations/2026-03-01.ndjson"]
-        f4["data/payments/2026-03-01.ndjson"]
-        f5["data/merchants.ndjson"]
-    end
+    load["bq load<br/>sends each file to BigQuery"]
+    rawl[("BigQuery raw<br/>one table per file")]
+    dbt["dbt run<br/>builds staging then marts"]
+    final[("BigQuery marts<br/>the tables you query")]
 
-    subgraph raw["BigQuery raw<br/>append only, partitioned by ingestion date"]
+    gen --> f1 & f2 & f3 & f4 & f5
+    f1 & f2 & f3 & f4 & f5 --> load
+    load --> rawl
+    rawl --> dbt
+    dbt --> final
+```
+
+Three things you run, in order:
+
+1. `python generator/...` writes the files
+2. `bq load` puts them in BigQuery
+3. `dbt run` builds everything on top
+
+Only step 1 exists so far, and only the merchants part of it.
+
+## Every table and where it comes from
+
+Same pipeline, now showing each table rather than each step.
+
+```mermaid
+flowchart TD
+    gen["generator"]
+
+    subgraph raw["BigQuery raw<br/>exactly what arrived, never edited"]
         r1[("raw_customers")]
         r2[("raw_accounts")]
         r3[("raw_card_authorisations")]
@@ -33,7 +59,7 @@ flowchart TD
         r5[("raw_merchants")]
     end
 
-    subgraph staging["dbt staging<br/>views, renamed and typed, duplicates resolved"]
+    subgraph staging["dbt staging<br/>views, renamed and typed, duplicates removed"]
         s1["stg_customers"]
         s2["stg_accounts"]
         s3["stg_card_authorisations"]
@@ -41,26 +67,23 @@ flowchart TD
         s5["stg_merchants"]
     end
 
-    subgraph marts["dbt marts<br/>tables, the star schema"]
+    subgraph marts["dbt marts<br/>tables, the ones people query"]
         d1["dim_customer<br/>SCD2"]
         d2["dim_account<br/>SCD2"]
         d3["dim_merchant"]
-        d4["dim_date"]
+        d4["dim_date<br/>generated, no source"]
         ft1["fct_card_authorisations"]
         ft2["fct_transactions"]
         ft3["fct_account_daily_balance"]
     end
 
-    subgraph consumers["Who reads it"]
-        c1["Internal reporting"]
-        c2["Financial and regulatory returns"]
-    end
+    gen --> r1 & r2 & r3 & r4 & r5
 
-    cust --> f1 --> r1 --> s1
-    acct --> f2 --> r2 --> s2
-    card --> f3 --> r3 --> s3
-    pay --> f4 --> r4 --> s4
-    mer --> f5 --> r5 --> s5
+    r1 --> s1
+    r2 --> s2
+    r3 --> s3
+    r4 --> s4
+    r5 --> s5
 
     s1 --> d1
     s2 --> d2
@@ -70,32 +93,26 @@ flowchart TD
     s4 --> ft2
     s2 --> ft3
     s4 --> ft3
-
-    d1 --> c1
-    d2 --> c1
-    d3 --> c1
-    d4 --> c1
-    ft1 --> c1
-    ft2 --> c1
-    ft2 --> c2
-    ft3 --> c2
 ```
 
-Things worth noticing in that diagram.
+Worth noticing:
 
-**Raw is never read by anything except staging.** If a transformation turns out to be wrong, the
-warehouse is rebuilt from raw without going back to the source systems.
+**Raw to staging is one to one.** Five tables in, five out. Staging only tidies, it never combines.
 
-**`fct_transactions` has two inputs.** It needs both the authorisation and the settlement, because
-transaction status is derived from whether a settlement arrived. No source sends that column.
+**Staging to marts is not.** Five go in, seven come out, and some cross over. This is where the
+shape changes.
 
-**`dim_date` has no input.** It is generated from a date range rather than loaded from anywhere,
-since nothing upstream emits a calendar.
+**`fct_transactions` has two arrows into it.** It needs authorisations and settlements both,
+because transaction status is worked out by checking whether a settlement arrived. No source sends
+that column.
+
+**`dim_date` has no arrow in.** It is generated from a date range, because nothing upstream emits
+a calendar.
 
 ## Card payment lifecycle
 
-This is the sequence that makes the modelling interesting. One card tap produces two events, days
-apart, possibly with different amounts.
+One card tap produces two events, days apart, possibly for different amounts. This is why
+`fct_transactions` needs two sources.
 
 ```mermaid
 sequenceDiagram
@@ -109,14 +126,14 @@ sequenceDiagram
     Note over C,W: Day 1, 09:14. Authorisation.
 
     C->>T: taps card, 45.20
-    T->>N: authorisation request
-    N->>B: authorisation request
+    T->>N: can this card pay?
+    N->>B: can this card pay?
     B->>B: check balance, fraud rules, limits
     B-->>N: approved
     N-->>T: approved
     T-->>C: receipt printed
     B->>B: hold 45.20 against available balance
-    B->>W: authorisation event, created_ts 09:14
+    B->>W: authorisation event
 
     Note over C,B: No money has moved. 45.20 is reserved, not taken.
 
@@ -125,22 +142,20 @@ sequenceDiagram
     T->>N: merchant submits the day's batch
     N->>B: settlement, 45.20, capture
     B->>B: release the hold, move the money
-    B->>W: settlement event, created_ts day 3
+    B->>W: settlement event
 
-    Note over W: ingested_ts is later again, so a day 1 report<br/>run on day 2 was short by this transaction.
-
-    W->>W: join authorisation to settlement, derive status
+    W->>W: join the two, work out the status
 ```
 
-### Why this shape causes problems
+### Why this causes problems
 
-**Authorisation is not spend.** The hold can be released without any money moving, if the merchant
-abandons the authorisation or it expires. Reporting spend from authorisations overstates it.
+**Authorisation is not spend.** A hold can be released without money ever moving, if the merchant
+abandons it or it expires. Reporting spend from authorisations overstates it.
 
 **Settlement can differ from authorisation.** A restaurant authorises 40.00 and settles 48.00 once
-a tip is added. A pay at pump petrol station authorises 100.00 and settles 62.00. The card networks
-allow settlement above the authorised amount within a tolerance of roughly twenty percent, so a
-test asserting that settlement never exceeds authorisation would fail on every tipped meal.
+a tip is added. A pay at pump petrol station authorises 100.00 and settles 62.00. Card networks
+allow settlement above the authorised amount by roughly twenty percent, so a test asserting
+settlement never exceeds authorisation would fail on every tipped meal.
 
 **Status is derived, not sent.** Nothing upstream knows whether a transaction is pending or
 settled, because that depends on whether a second event has turned up yet.
@@ -151,21 +166,19 @@ settled, because that depends on whether a second event has turned up yet.
 | exists | capture | settled |
 | exists | capture then refund | reversed |
 
-**Two timestamps are needed.** `created_ts` says when it happened, `ingested_ts` says when the
-warehouse received it. A transaction at 23:50 on 31 March arriving at 00:30 on 2 April belongs in
-March by the first and April by the second. Both answers are correct, for different questions, and
-reproducing what a past report said needs both.
+**Two timestamps are needed.** `created_ts` is when it happened, `ingested_ts` is when the
+warehouse received it. A transaction at 23:50 on 31 March arriving at 00:30 on 2 April counts as
+March by the first and April by the second. Both are correct, for different questions.
 
-## Layer responsibilities
+## Why three layers
 
-```mermaid
-flowchart LR
-    raw["raw<br/><br/>exactly what arrived<br/>append only<br/>never edited<br/>the rebuild point"]
-    stg["staging<br/><br/>rename and type<br/>flatten payloads<br/>resolve duplicates<br/>no business logic"]
-    mart["marts<br/><br/>dimensional model<br/>derived columns<br/>business meaning<br/>what gets queried"]
+**raw** holds exactly what arrived and is never edited. If a transformation turns out to be wrong,
+everything downstream is rebuilt from here rather than asking the source systems to send it again.
 
-    raw --> stg --> mart
-```
+**staging** renames columns, fixes types, and removes duplicate deliveries. One model per source,
+no business logic, nothing joined.
 
-Each layer has one job. Keeping them separate means source specific awkwardness is handled in
-exactly one place, and everything downstream can assume clean, consistently named input.
+**marts** is where the shape changes: sources get combined, columns get derived, and the result is
+organised around the questions people ask rather than around the systems the data came from.
+
+Each layer has one job, so when something breaks it is clear which part to look at.
