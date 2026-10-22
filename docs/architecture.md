@@ -16,6 +16,11 @@ writing files that look like what those services would have sent.
 
 ```mermaid
 flowchart TD
+    subgraph key["Key"]
+        k1["a real step"] --> k2["the next real step"]
+        k3["a stand in,<br/>not part of a real bank"] -.-> k4["what it pretends to be"]
+    end
+
     subgraph world["1. What happens in a real bank"]
         w1["a customer signs up<br/>or changes their address"]
         w2["someone opens or closes<br/>an account"]
