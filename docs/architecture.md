@@ -41,11 +41,11 @@ flowchart TD
         f5["merchants<br/>one file, no date"]
     end
 
-    load["4. bq load<br/>sends each file to BigQuery"]
-    rawt[("5. BigQuery raw<br/>one table per file, never edited")]
-    dbtrun["6. dbt run"]
-    stg[("7. staging<br/>renamed, typed, duplicates removed")]
-    final[("8. marts<br/>the tables people query")]
+    load["4. bq load<br/><i>BigQuery load job</i>"]
+    rawt[("5. raw tables<br/>never edited<br/><i>BigQuery storage</i>")]
+    dbtrun["6. dbt run<br/><i>BigQuery query jobs</i>"]
+    stg["7. staging views<br/>renamed, typed, duplicates removed<br/><i>metadata only, no storage</i>"]
+    final[("8. marts<br/>the tables people query<br/><i>BigQuery storage</i>")]
 
     w1 --> s1
     w2 --> s2
@@ -76,6 +76,30 @@ The top row is what the generator is imitating. Each real world action becomes o
 | a customer taps their card | the card authorisations file |
 | a shop claims its money | the payments file |
 | a shop is paid for the first time | a new row in the merchant file |
+
+### Where each step runs
+
+Steps 1 to 3 happen on a laptop. Everything from step 4 onwards is BigQuery, which is the only
+cloud service this project uses.
+
+| Step | What runs it |
+|---|---|
+| 1 to 3, generator and files | a laptop. No cloud involved |
+| 4, `bq load` | a **load job**. Reads the file, writes into storage |
+| 5, raw tables | **storage**. Partitioning is a storage feature, it decides the physical layout |
+| 6, `dbt run` | **query jobs**. The SQL runs on Google's machines, not the laptop |
+| 7, staging views | **metadata only**. A view is a saved query, so it takes no storage at all |
+| 8, marts | **storage**, written by the query jobs that built them |
+
+Two parts of BigQuery are doing all of this, and they are billed separately. **Storage** holds the
+tables and costs a few pence per gigabyte per month. The **query engine** runs the SQL and is
+billed per terabyte scanned, which is where the real cost sits. Partitioning matters because it
+reduces how much the query engine has to read.
+
+Every operation is recorded as a job, and `INFORMATION_SCHEMA.JOBS` holds a row for each one with
+the bytes it scanned. The `query-comment` setting in `dbt_project.yml` labels each job with the
+model that produced it, so cost can later be attributed per model rather than appearing as one
+anonymous total.
 
 Three things you run, in order:
 
