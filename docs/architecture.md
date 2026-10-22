@@ -16,11 +16,6 @@ writing files that look like what those services would have sent.
 
 ```mermaid
 flowchart TD
-    subgraph key["Key"]
-        k1["a real step"] --> k2["the next real step"]
-        k3["a stand in,<br/>not part of a real bank"] -.-> k4["what it pretends to be"]
-    end
-
     subgraph world["1. What happens in a real bank"]
         w1["a customer signs up<br/>or changes their address"]
         w2["someone opens or closes<br/>an account"]
@@ -28,15 +23,13 @@ flowchart TD
         w4["a shop claims the money<br/>it is owed, in a daily batch"]
     end
 
-    subgraph svc["2. The service that records it"]
+    subgraph svc["2. The service that records it<br/>all five are simulated by one Python program"]
         c1["customer service"]
         c2["account service"]
         c3["card service"]
         c4["payment service"]
         c5["merchant list<br/>built up by the bank"]
     end
-
-    gen["the generator stands in for all five<br/>one Python program, no real bank"]
 
     subgraph files["3. NDJSON files on disk"]
         f1["customers<br/>daily snapshot"]
@@ -80,7 +73,6 @@ flowchart TD
     w2 --> c2
     w3 --> c3
     w4 --> c4
-    gen -.-> c1 & c2 & c3 & c4 & c5
 
     c1 --> f1
     c2 --> f2
