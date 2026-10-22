@@ -23,7 +23,7 @@ flowchart TD
         w4["a shop claims the money<br/>it is owed, in a daily batch"]
     end
 
-    subgraph svc["2. The service that records it<br/>all five are simulated by one Python program"]
+    subgraph svc["2. In a real bank, a service records it"]
         c1["customer service"]
         c2["account service"]
         c3["card service"]
@@ -31,7 +31,9 @@ flowchart TD
         c5["merchant list<br/>built up by the bank"]
     end
 
-    subgraph files["3. NDJSON files on disk"]
+    gen["3. This project has none of those services.<br/>One Python generator produces what they would have sent."]
+
+    subgraph files["4. NDJSON files on disk"]
         f1["customers<br/>daily snapshot"]
         f2["accounts<br/>daily snapshot"]
         f3["card authorisations<br/>events"]
@@ -39,9 +41,9 @@ flowchart TD
         f5["merchants<br/>no date"]
     end
 
-    load["4. bq load"]
+    load["5. bq load"]
 
-    subgraph raw["5. BigQuery raw, never edited"]
+    subgraph raw["6. BigQuery raw, never edited"]
         r1[("raw_customers")]
         r2[("raw_accounts")]
         r3[("raw_card_authorisations")]
@@ -49,9 +51,9 @@ flowchart TD
         r5[("raw_merchants")]
     end
 
-    dbtrun["6. dbt run"]
+    dbtrun["7. dbt run"]
 
-    subgraph staging["7. staging, views, no storage"]
+    subgraph staging["8. staging, views, no storage"]
         g1["stg_customers"]
         g2["stg_accounts"]
         g3["stg_card_authorisations"]
@@ -59,7 +61,7 @@ flowchart TD
         g5["stg_merchants"]
     end
 
-    subgraph marts["8. marts, tables people query"]
+    subgraph marts["9. marts, tables people query"]
         d1["dim_customer<br/>SCD2"]
         d2["dim_account<br/>SCD2"]
         d3["dim_merchant"]
@@ -74,11 +76,8 @@ flowchart TD
     w3 --> c3
     w4 --> c4
 
-    c1 --> f1
-    c2 --> f2
-    c3 --> f3
-    c4 --> f4
-    c5 --> f5
+    c1 & c2 & c3 & c4 & c5 --> gen
+    gen --> f1 & f2 & f3 & f4 & f5
 
     f1 & f2 & f3 & f4 & f5 --> load
     load --> r1 & r2 & r3 & r4 & r5
@@ -96,19 +95,20 @@ flowchart TD
     g4 --> t3
 ```
 
-Steps 1 to 3 happen on a laptop. Everything from step 4 onwards is BigQuery, which is the only
+Steps 3 and 4 happen on a laptop. Everything from step 5 onwards is BigQuery, which is the only
 cloud service this project uses.
 
 | Step | What happens | What runs it |
 |---|---|---|
-| 1 | a customer taps a card, signs up, opens an account, or a shop claims its money | the real world. Here, the generator pretends |
-| 2 | the service that owns that area records it | a laptop |
-| 3 | each service writes a file. Customer and account write a full daily snapshot, card and payment write one line per event | a laptop |
-| 4 | `bq load` sends each file over | a BigQuery **load job**, reading the file and writing into storage |
-| 5 | raw tables, exactly what arrived, never edited | BigQuery **storage**. Partitioning is a storage feature, it decides the physical layout |
-| 6 | `dbt run` builds everything above raw | BigQuery **query jobs**. The SQL runs on Google's machines, not the laptop |
-| 7 | staging views rename, type and remove duplicates | **metadata only**. A view is a saved query, so it takes no storage |
-| 8 | marts, the tables people query | BigQuery **storage**, written by the query jobs that built them |
+| 1 | a customer taps a card, signs up, opens an account, or a shop claims its money | the real world |
+| 2 | the service that owns that area records it | a real bank. This project has none |
+| 3 | one Python generator produces what those services would have sent | a laptop |
+| 4 | the generator writes files. Customer and account write a full daily snapshot, card and payment write one line per event | a laptop |
+| 5 | `bq load` sends each file over | a BigQuery **load job**, reading the file and writing into storage |
+| 6 | raw tables, exactly what arrived, never edited | BigQuery **storage**. Partitioning is a storage feature, it decides the physical layout |
+| 7 | `dbt run` builds everything above raw | BigQuery **query jobs**. The SQL runs on Google's machines, not the laptop |
+| 8 | staging views rename, type and remove duplicates | **metadata only**. A view is a saved query, so it takes no storage |
+| 9 | marts, the tables people query | BigQuery **storage**, written by the query jobs that built them |
 
 Every operation is recorded as a job, and `INFORMATION_SCHEMA.JOBS` holds a row for each one. The
 `query-comment` setting in `dbt_project.yml` labels each job with the model that produced it, so
