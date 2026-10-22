@@ -67,29 +67,19 @@ flowchart TD
     stg --> final
 ```
 
-The top row is what the generator is imitating. Each real world action becomes one kind of file:
-
-| What happens | Becomes |
-|---|---|
-| a customer signs up or moves house | the customer file |
-| someone opens or closes an account | the account file |
-| a customer taps their card | the card authorisations file |
-| a shop claims its money | the payments file |
-| a shop is paid for the first time | a new row in the merchant file |
-
-### Where each step runs
-
 Steps 1 to 3 happen on a laptop. Everything from step 4 onwards is BigQuery, which is the only
 cloud service this project uses.
 
-| Step | What runs it |
-|---|---|
-| 1 to 3, generator and files | a laptop. No cloud involved |
-| 4, `bq load` | a **load job**. Reads the file, writes into storage |
-| 5, raw tables | **storage**. Partitioning is a storage feature, it decides the physical layout |
-| 6, `dbt run` | **query jobs**. The SQL runs on Google's machines, not the laptop |
-| 7, staging views | **metadata only**. A view is a saved query, so it takes no storage at all |
-| 8, marts | **storage**, written by the query jobs that built them |
+| Step | What happens | What runs it |
+|---|---|---|
+| 1 | a customer taps a card, signs up, opens an account, or a shop claims its money | the real world. Here, the generator pretends |
+| 2 | the service that owns that area records it | a laptop |
+| 3 | each service writes a file. Customer and account write a full daily snapshot, card and payment write one line per event | a laptop |
+| 4 | `bq load` sends each file over | a BigQuery **load job**, reading the file and writing into storage |
+| 5 | raw tables, exactly what arrived, never edited | BigQuery **storage**. Partitioning is a storage feature, it decides the physical layout |
+| 6 | `dbt run` builds everything above raw | BigQuery **query jobs**. The SQL runs on Google's machines, not the laptop |
+| 7 | staging views rename, type and remove duplicates | **metadata only**. A view is a saved query, so it takes no storage |
+| 8 | marts, the tables people query | BigQuery **storage**, written by the query jobs that built them |
 
 Every operation is recorded as a job, and `INFORMATION_SCHEMA.JOBS` holds a row for each one. The
 `query-comment` setting in `dbt_project.yml` labels each job with the model that produced it, so
@@ -100,8 +90,6 @@ Three things you run, in order:
 1. `python generator/...` writes the files
 2. `bq load` puts them in BigQuery
 3. `dbt run` builds everything on top
-
-Only step 1 exists so far, and only the merchants part of it.
 
 ## Every table and where it comes from
 
