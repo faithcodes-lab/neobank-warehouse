@@ -91,15 +91,9 @@ cloud service this project uses.
 | 7, staging views | **metadata only**. A view is a saved query, so it takes no storage at all |
 | 8, marts | **storage**, written by the query jobs that built them |
 
-Two parts of BigQuery are doing all of this, and they are billed separately. **Storage** holds the
-tables and costs a few pence per gigabyte per month. The **query engine** runs the SQL and is
-billed per terabyte scanned, which is where the real cost sits. Partitioning matters because it
-reduces how much the query engine has to read.
-
-Every operation is recorded as a job, and `INFORMATION_SCHEMA.JOBS` holds a row for each one with
-the bytes it scanned. The `query-comment` setting in `dbt_project.yml` labels each job with the
-model that produced it, so cost can later be attributed per model rather than appearing as one
-anonymous total.
+Every operation is recorded as a job, and `INFORMATION_SCHEMA.JOBS` holds a row for each one. The
+`query-comment` setting in `dbt_project.yml` labels each job with the model that produced it, so
+usage can later be attributed per model rather than appearing as one anonymous total.
 
 Three things you run, in order:
 
