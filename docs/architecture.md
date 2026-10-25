@@ -62,13 +62,13 @@ flowchart TD
     end
 
     subgraph marts["9. marts, tables people query"]
-        d1["dim_customer<br/>SCD2"]
-        d2["dim_account<br/>SCD2"]
-        d3["dim_merchant"]
-        d4["dim_date<br/>generated, no source"]
-        t1["fct_card_authorisations"]
-        t2["fct_transactions"]
-        t3["fct_account_daily_balance"]
+        d1[("dim_customer<br/>SCD2")]
+        d2[("dim_account<br/>SCD2")]
+        d3[("dim_merchant")]
+        d4[("dim_date<br/>generated, no source")]
+        t1[("fct_card_authorisations")]
+        t2[("fct_transactions")]
+        t3[("fct_account_daily_balance")]
     end
 
     w1 --> c1
