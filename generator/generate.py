@@ -15,23 +15,23 @@ Run with:
     python generator/generate.py
 """
 
-import json # turns python data into JSON text
-import os # works with the operating system, like creating files and folders.
+import json  # turns python data into JSON text
+import os  # works with the operating system, like creating files and folders.
 
-import random # generates random numbers, used for creating random data. 
-import uuid # generates unique identifiers.
-from datetime import date, datetime, timedelta # works with dates and times.
+import random  # generates random numbers, used for creating random data.
+import uuid  # generates unique identifiers.
+from datetime import date, datetime, timedelta  # works with dates and times.
 
 # set the random seed for reproducibility
 random.seed(42)
 
 # facts about the data that will be generated
 
-START_DATE = date(2026, 7, 1) # first day of the data to generate
-NUMBER_OF_DAYS = 92 # number of days to generate the data for
-STARTING_CUSTOMERS = 200 # number of customers to start with
+START_DATE = date(2026, 7, 1)  # first day of the data to generate
+NUMBER_OF_DAYS = 92  # number of days to generate the data for
+STARTING_CUSTOMERS = 200  # number of customers to start with
 
-CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes 
+CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
     "GB": "GBP",
     "US": "USD",
     "DE": "EUR",
@@ -40,8 +40,8 @@ CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
 }
 
 
-# Merchants are the businesses that customers spend money with. 
-# Each merchant has a name, a category, and a Merchant Category Code (MCC). 
+# Merchants are the businesses that customers spend money with.
+# Each merchant has a name, a category, and a Merchant Category Code (MCC).
 # The MCC is a four-digit number used to classify merchants by the type of goods or services they provide.
 
 MERCHANTS = [
@@ -93,5 +93,58 @@ def write_ndjson(records, filename):
     print("wrote", len(records), "records to", filename)
 
 
+# customers
+
+FIRST_NAMES = [
+    "Alice", "Bob", "Charlie", "David", "Eva", "Frank", "Grace", "Hannah",
+    "Ian", "Jack", "Kathy", "Liam", "Mia", "Noah", "Olivia", "Paul",
+    "Quinn", "Rachel", "Sam", "Tina", "Uma", "Victor", "Wendy",
+    "Xander", "Yara", "Zane", "James", "Sofia", "Chloe", "Daniel"
+]
+
+LAST_NAMES = [
+    "Walsh", "Smith", "Johnson", "Williams", "Brown", "Jones", "Miller", "Davis",
+    "Garcia", "Rodriguez", "Wilson", "Martinez", "Anderson", "Taylor",
+    "Thomas", "Hernandez", "Moore", "Martin", "Jackson", "Thompson",
+    "White", "Lopez", "Lee", "Gonzalez", "Harris", "Clark", "Lewis", "Robinson", "Walker", "Perez", "Hall", "Young", "Allen"
+]
+
+# randomly generates a customer name by picking a first and last name from the lists above.
+
+
+def generate_customer_name():
+    return random.choice(FIRST_NAMES) + " " + random.choice(LAST_NAMES)
+
+# random date helper function to generate a date of birth for a customer and signup dates.
+
+
+def random_date(start, end):
+    """Returns a random date between start and end."""
+    days = (end - start).days
+    return start + timedelta(days=random.randint(0, days))
+
+def build_starting_customers():
+    """Build the initial set of customers."""
+    customers = []
+
+    for numbers in range(1, STARTING_CUSTOMERS + 1):
+        customer_id = f"cus_{numbers:04d}"
+        name = generate_customer_name()
+        country = random.choice(list(CURRENCY_BY_COUNTRY.keys()))
+        date_of_birth = random_date(date(1950, 1, 1), date(2002, 1, 1))
+        signup_date = random_date(date(2020, 1, 1), START_DATE - timedelta(days=1))
+
+        customer = {
+            "customer_id": customer_id,
+            "full_name": name,
+            "country": country,
+            "date_of_birth": date_of_birth.isoformat(),
+            "signup_date": signup_date.isoformat(),
+            "closed_date": None  # customers are active at the start
+        }
+        customers.append(customer)
+    return customers
+
 if __name__ == "__main__":
     write_ndjson(build_merchants(), "data/merchants.ndjson")
+    write_ndjson(build_starting_customers(), "data/customers.ndjson")
