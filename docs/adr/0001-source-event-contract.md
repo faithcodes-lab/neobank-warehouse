@@ -5,6 +5,8 @@ Date: 2026-10-06
 Status: accepted, partially. The card authorisation event is settled. The payment, customer and
 account payloads still need working through.
 
+Amended 2026-10-27: customer countries changed to GB, US, DE, FR and ES.
+
 ## Context
 
 The generator stands in for a bank's backend services, so before writing it I need to decide what
@@ -32,7 +34,7 @@ A warehouse usually receives a daily extract of current state for dimensions rat
 change events behind them, because rebuilding current state by replaying a long event history
 is slow and expensive. So that is what I am simulating.
 
-The consequence is that a change is not announced. If a customer moves from Ireland to France, I
+The consequence is that a change is not announced. If a customer moves from Spain to France, I
 find out by noticing that today's file differs from yesterday's. dbt has a snapshot feature that
 does that comparison and builds the type 2 history from it, which is what I will use.
 
@@ -71,8 +73,9 @@ ingested_ts       when the warehouse received it
 same authorisation can arrive twice. Two coffees bought seconds apart at the same price are
 indistinguishable from one duplicated coffee unless each event carries its own id.
 
-`currency` matters more than it looks. The bank has customers in Ireland and France, so summing
-mixed currencies without converting produces a number that means nothing.
+`currency` matters more than it looks. The bank has customers in the UK, the US, Germany,
+France and Spain, so summing mixed currencies without converting produces a number that means
+nothing.
 
 The two timestamps exist because they answer different questions. A transaction at 23:50 on 31
 March that arrives at 00:30 on 2 April belongs in March by `created_ts`, because that is when the

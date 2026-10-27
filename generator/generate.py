@@ -1,17 +1,48 @@
-"""Generates merchant reference data as NDJSON.
+"""Generates all source data for the warehouse as NDJSON files.
 
-Merchants are reference data, not events. The bank does not own them, the list
-changes rarely, and there is no date in the filename. See ADR 1.
+Stands in for the bank's backend services, which this project does not have.
+Produces the five sources set out in ADR 1 and ADR 2:
 
-Output, one JSON object per line:
-    {"merchant_id": "mer_0001", "merchant_name": "Tesco", "category": "Groceries", "mcc": "5411"}
+    merchants              reference data, one undated file
+    customers              daily snapshot, one file per day
+    accounts               daily snapshot, one file per day
+    card authorisations    events, one file per ingestion date
+    payments               settlement events, one file per ingestion date
+
+The random seed is fixed, so every run produces the same data.
 
 Run with:
-    python generator/merchants.py
+    python generator/generate.py
 """
 
-import json
-import os
+import json # turns python data into JSON text
+import os # works with the operating system, like creating files and folders.
+
+import random # generates random numbers, used for creating random data. 
+import uuid # generates unique identifiers.
+from datetime import date, datetime, timedelta # works with dates and times.
+
+# set the random seed for reproducibility
+random.seed(42)
+
+# facts about the data that will be generated
+
+START_DATE = date(2026, 7, 1) # first day of the data to generate
+NUMBER_OF_DAYS = 92 # number of days to generate the data for
+STARTING_CUSTOMERS = 200 # number of customers to start with
+
+CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes 
+    "GB": "GBP",
+    "US": "USD",
+    "DE": "EUR",
+    "FR": "EUR",
+    "ES": "EUR"
+}
+
+
+# Merchants are the businesses that customers spend money with. 
+# Each merchant has a name, a category, and a Merchant Category Code (MCC). 
+# The MCC is a four-digit number used to classify merchants by the type of goods or services they provide.
 
 MERCHANTS = [
     {"merchant_name": "Tesco", "category": "Groceries", "mcc": "5411"},
