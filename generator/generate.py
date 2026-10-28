@@ -1,7 +1,7 @@
 """Generates all source data for the warehouse as NDJSON files.
 
 Stands in for the bank's backend services, which this project does not have.
-Produces the five sources set out in ADR 1 and ADR 2:
+Produces the five sources of data that the warehouse needs:
 
     merchants              reference data, one undated file
     customers              daily snapshot, one file per day
@@ -19,15 +19,14 @@ import json  # turns python data into JSON text
 import os  # works with the operating system, like creating files and folders.
 
 import random  # generates random numbers, used for creating random data.
-import uuid  # generates unique identifiers.
-from datetime import date, datetime, timedelta  # works with dates and times.
+import datetime  # works with dates and times.
 
 # set the random seed for reproducibility
 random.seed(42)
 
 # facts about the data that will be generated
 
-START_DATE = date(2026, 7, 1)  # first day of the data to generate
+START_DATE = datetime.date(2026, 7, 1)  # first day of the data to generate
 NUMBER_OF_DAYS = 92  # number of days to generate the data for
 STARTING_CUSTOMERS = 200  # number of customers to start with
 
@@ -64,8 +63,8 @@ MERCHANTS = [
 ]
 
 
-def build_merchants():
-    """Adds a padded id to each merchant and returns them as records."""
+def build_merchants() -> list[dict]:
+    """Gives each merchant a four-digit unique ID and returns them as records."""
     records = []
 
     for position, merchant in enumerate(MERCHANTS, start=1):
@@ -79,21 +78,10 @@ def build_merchants():
 
     return records
 
+# customers are the people who use the bank's services.
+# Each customer has a unique ID, a name, a country, a date of birth, and a signup date.
+# Some customers may have closed their accounts, in which case they will also have a closed date.
 
-def write_ndjson(records, filename):
-    """Writes one JSON object per line, creating the folder if needed."""
-    folder = os.path.dirname(filename)
-    if folder:
-        os.makedirs(folder, exist_ok=True)
-
-    with open(filename, "w") as f:
-        for record in records:
-            f.write(json.dumps(record) + "\n")
-
-    print("wrote", len(records), "records to", filename)
-
-
-# customers
 
 FIRST_NAMES = [
     "Alice", "Bob", "Charlie", "David", "Eva", "Frank", "Grace", "Hannah",
@@ -121,7 +109,8 @@ def generate_customer_name():
 def random_date(start, end):
     """Returns a random date between start and end."""
     days = (end - start).days
-    return start + timedelta(days=random.randint(0, days))
+    return start + datetime.timedelta(days=random.randint(0, days))
+
 
 def build_starting_customers():
     """Build the initial set of customers."""
@@ -131,8 +120,9 @@ def build_starting_customers():
         customer_id = f"cus_{numbers:04d}"
         name = generate_customer_name()
         country = random.choice(list(CURRENCY_BY_COUNTRY.keys()))
-        date_of_birth = random_date(date(1950, 1, 1), date(2002, 1, 1))
-        signup_date = random_date(date(2020, 1, 1), START_DATE - timedelta(days=1))
+        date_of_birth = random_date(datetime.date(1950, 1, 1), datetime.date(2002, 1, 1))
+        signup_date = random_date(
+            datetime.date(2020, 1, 1), START_DATE - datetime.timedelta(days=1))
 
         customer = {
             "customer_id": customer_id,
@@ -145,6 +135,23 @@ def build_starting_customers():
         customers.append(customer)
     return customers
 
+# write the records to NDJSON files
+
+
+def write_ndjson(records, filename):
+    """Writes one JSON object per line, creating the folder if needed."""
+    folder = os.path.dirname(filename)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+
+    with open(filename, "w") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+
+    print("wrote", len(records), "records to", filename)
+
+
+# runs the data generation functions and writes the output to NDJSON files.
 if __name__ == "__main__":
     write_ndjson(build_merchants(), "data/merchants.ndjson")
     write_ndjson(build_starting_customers(), "data/customers.ndjson")
