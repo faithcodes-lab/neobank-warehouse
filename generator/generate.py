@@ -29,6 +29,7 @@ random.seed(42)
 START_DATE = datetime.date(2026, 7, 1)  # first day of the data to generate
 NUMBER_OF_DAYS = 92  # number of days to generate the data for
 STARTING_CUSTOMERS = 200  # number of customers to start with
+SAVINGS_ACCOUNT_PROBABILITY = 0.3  # probability that a customer has a savings account
 
 CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
     "GB": "GBP",
@@ -100,19 +101,19 @@ LAST_NAMES = [
 # randomly generates a customer name by picking a first and last name from the lists above.
 
 
-def generate_customer_name():
+def generate_customer_name()-> str:
     return random.choice(FIRST_NAMES) + " " + random.choice(LAST_NAMES)
 
 # random date helper function to generate a date of birth for a customer and signup dates.
 
 
-def random_date(start, end):
+def random_date(start, end)-> datetime.date:
     """Returns a random date between start and end."""
     days = (end - start).days
     return start + datetime.timedelta(days=random.randint(0, days))
 
 
-def build_starting_customers():
+def build_starting_customers()-> list[dict]:
     """Build the initial set of customers."""
     customers = []
 
@@ -135,8 +136,50 @@ def build_starting_customers():
         customers.append(customer)
     return customers
 
-# write the records to NDJSON files
 
+# Accounts are the bank accounts that customers have.
+# Each account has a unique ID, a customer ID, a type (checking or savings), a currency, and a balance.
+
+def build_starting_accounts(customers) -> list[dict]:
+    """Gives every customer a current account and some customers a savings account, returning the accounts as records."""
+    accounts = []
+    next_account_number = 1 # used to generate unique account IDs
+
+    for customer in customers:
+        signup_date = datetime.date.fromisoformat(customer["signup_date"])
+        currency = CURRENCY_BY_COUNTRY[customer["country"]]
+
+        # every customer has a current account, opened when they sign up
+        accounts.append({
+            "account_id": f"acc_{next_account_number:04d}",
+            "customer_id": customer["customer_id"],
+            "account_type": "current",
+            "currency": currency,
+            "opened_date": signup_date.isoformat(),
+            "closed_date": None,
+            "status": "open"
+        })
+        next_account_number += 1
+
+        # some customers also have a savings account, opened at a random date after signup
+        if random.random() < SAVINGS_ACCOUNT_PROBABILITY:
+            savings_opened_date = random_date(signup_date, START_DATE - datetime.timedelta(days=1))
+            accounts.append({
+                "account_id": f"acc_{next_account_number:04d}",
+                "customer_id": customer["customer_id"],
+                "account_type": "savings",
+                "currency": currency,
+                "opened_date": savings_opened_date.isoformat(),
+                "closed_date": None,
+                "status": "open"
+            })
+            next_account_number += 1
+    return accounts
+
+
+
+
+# write the records to NDJSON files
 
 def write_ndjson(records, filename):
     """Writes one JSON object per line, creating the folder if needed."""
@@ -154,4 +197,9 @@ def write_ndjson(records, filename):
 # runs the data generation functions and writes the output to NDJSON files.
 if __name__ == "__main__":
     write_ndjson(build_merchants(), "data/merchants.ndjson")
-    write_ndjson(build_starting_customers(), "data/customers.ndjson")
+    
+    customers = build_starting_customers()
+    write_ndjson(customers, "data/customers.ndjson")
+
+    accounts = build_starting_accounts(customers)
+    write_ndjson(accounts, "data/accounts.ndjson")
