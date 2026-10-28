@@ -102,6 +102,7 @@ LAST_NAMES = [
 
 
 def generate_customer_name()-> str:
+    """Generates a random customer name."""
     return random.choice(FIRST_NAMES) + " " + random.choice(LAST_NAMES)
 
 # random date helper function to generate a date of birth for a customer and signup dates.
@@ -138,7 +139,8 @@ def build_starting_customers()-> list[dict]:
 
 
 # Accounts are the bank accounts that customers have.
-# Each account has a unique ID, a customer ID, a type (checking or savings), a currency, and a balance.
+# Each account has a unique ID, a customer who owns it, a type (current or savings),
+# a currency, an opened date, a closed date (if applicable), and a status (open or closed).
 
 def build_starting_accounts(customers) -> list[dict]:
     """Gives every customer a current account and some customers a savings account, returning the accounts as records."""
@@ -197,7 +199,7 @@ def write_ndjson(records, filename):
 # runs the data generation functions and writes the output to NDJSON files.
 if __name__ == "__main__":
     write_ndjson(build_merchants(), "data/merchants.ndjson")
-    
+
     customers = build_starting_customers()
     write_ndjson(customers, "data/customers.ndjson")
 
