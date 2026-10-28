@@ -32,6 +32,12 @@ STARTING_CUSTOMERS = 200  # number of customers to start with
 # probability that a customer has a savings account
 SAVINGS_ACCOUNT_PROBABILITY = 0.3
 
+MAX_DAILY_SIGNUPS = 3  # each day, between 0 and 3 new customers join the bank.
+
+COUNTRY_MOVE_CHANCE = 0.001  # chance a customer moves country on any given day
+
+CLOSURE_CHANCE = 0.0005      # chance a customer leaves the bank on any given day
+
 CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
     "GB": "GBP",
     "US": "USD",
@@ -175,8 +181,37 @@ def build_starting_accounts(customer_records) -> list[dict]:
 
     return account_records
 
-# daily snapshots of customers and accounts.
+def close_customer(customer, accounts, today):
+    """Marks a customer as closed, and closes all of their open accounts the same day."""
+    customer["closed_date"] = today.isoformat()
 
+    for account in accounts:
+        if account["customer_id"] == customer["customer_id"] and account["status"] == "open":
+            account["status"] = "closed"
+            account["closed_date"] = today.isoformat() 
+
+def apply_daily_changes(customer_records, account_records, change_date):
+    """Applies one day's signups, country moves and closures to the customers and accounts."""
+
+    # new signups: each gets a current account opened the same day
+    for _ in range(random.randint(0, MAX_DAILY_SIGNUPS)):
+        customer = build_customer(len(customer_records) + 1, change_date)
+        customer_records.append(customer)
+        account_records.append(build_account(len(account_records) + 1, customer, "current", change_date))
+
+    # existing customers: some move country, a few leave
+    for customer in customer_records:
+        if customer["closed_date"] is not None:
+            continue   # already left the bank, so nothing more happens to them
+
+        if random.random() < COUNTRY_MOVE_CHANCE:
+            other_countries = [c for c in CURRENCY_BY_COUNTRY if c != customer["country"]]
+            customer["country"] = random.choice(other_countries)
+
+        elif random.random() < CLOSURE_CHANCE:
+            close_customer(customer, account_records, change_date)
+            
+# daily snapshots of customers and accounts.
 
 def add_snapshot_fields(records, snapshot_date) -> list[dict]:
     """Returns a copy of each record with snapshot_date and extracted_at added."""
@@ -219,6 +254,8 @@ if __name__ == "__main__":
     accounts = build_starting_accounts(customers)
     for day_number in range(NUMBER_OF_DAYS):
         today = START_DATE + datetime.timedelta(days=day_number)
+        apply_daily_changes(customers, accounts, today)  # signups, moves and closures for today
+
         write_ndjson(
             # stamp today's dates on every customer
             add_snapshot_fields(customers, today),
