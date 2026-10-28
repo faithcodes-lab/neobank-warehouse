@@ -29,7 +29,8 @@ random.seed(42)
 START_DATE = datetime.date(2026, 7, 1)  # first day of the data to generate
 NUMBER_OF_DAYS = 92  # number of days to generate the data for
 STARTING_CUSTOMERS = 200  # number of customers to start with
-SAVINGS_ACCOUNT_PROBABILITY = 0.3  # probability that a customer has a savings account
+# probability that a customer has a savings account
+SAVINGS_ACCOUNT_PROBABILITY = 0.3
 
 CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
     "GB": "GBP",
@@ -95,47 +96,47 @@ LAST_NAMES = [
     "Walsh", "Smith", "Johnson", "Williams", "Brown", "Jones", "Miller", "Davis",
     "Garcia", "Rodriguez", "Wilson", "Martinez", "Anderson", "Taylor",
     "Thomas", "Hernandez", "Moore", "Martin", "Jackson", "Thompson",
-    "White", "Lopez", "Lee", "Gonzalez", "Harris", "Clark", "Lewis", 
+    "White", "Lopez", "Lee", "Gonzalez", "Harris", "Clark", "Lewis",
     "Robinson", "Walker", "Perez", "Hall", "Young", "Allen"
 ]
 
 # randomly generates a customer name by picking a first and last name from the lists above.
 
 
-def generate_customer_name()-> str:
+def generate_customer_name() -> str:
     """Generates a random customer name."""
     return random.choice(FIRST_NAMES) + " " + random.choice(LAST_NAMES)
 
 # random date helper function to generate a date of birth for a customer and signup dates.
 
 
-def random_date(start, end)-> datetime.date:
+def random_date(start, end) -> datetime.date:
     """Returns a random date between start and end."""
     days = (end - start).days
     return start + datetime.timedelta(days=random.randint(0, days))
 
 
-def build_starting_customers()-> list[dict]:
+def build_customer(number, signup_date) -> dict:
+    """Makes one customer with a random name, country and birthday."""
+    return {
+        "customer_id": f"cus_{number:04d}",           # number 7 "cus_0007"
+        "full_name": generate_customer_name(),
+        "country": random.choice(list(CURRENCY_BY_COUNTRY.keys())),
+        "date_of_birth": random_date(datetime.date(1950, 1, 1), datetime.date(2002, 1, 1)).isoformat(),
+        "signup_date": signup_date.isoformat(),
+        "closed_date": None,
+    }
+
+
+def build_starting_customers() -> list[dict]:
     """Build the initial set of customers."""
     customer_records = []
 
     for numbers in range(1, STARTING_CUSTOMERS + 1):
-        customer_id = f"cus_{numbers:04d}"
-        name = generate_customer_name()
-        country = random.choice(list(CURRENCY_BY_COUNTRY.keys()))
-        date_of_birth = random_date(datetime.date(1950, 1, 1), datetime.date(2002, 1, 1))
-        signup_date = random_date(
-            datetime.date(2020, 1, 1), START_DATE - datetime.timedelta(days=1))
+        signup_date = random_date(datetime.date(
+            2020, 1, 1), START_DATE - datetime.timedelta(days=1))
+        customer_records.append(build_customer(numbers, signup_date))
 
-        customer = {
-            "customer_id": customer_id,
-            "full_name": name,
-            "country": country,
-            "date_of_birth": date_of_birth.isoformat(),
-            "signup_date": signup_date.isoformat(),
-            "closed_date": None  # customers are active at the start
-        }
-        customer_records.append(customer)
     return customer_records
 
 
@@ -143,51 +144,47 @@ def build_starting_customers()-> list[dict]:
 # Each account has a unique ID, a customer who owns it, a type (current or savings),
 # a currency, an opened date, a closed date (if applicable), and a status (open or closed).
 
+def build_account(number, customer, account_type, opened_date) -> dict:
+    """Makes one open account for a customer."""
+    return {
+        "account_id": f"acc_{number:04d}",
+        "customer_id": customer["customer_id"],
+        "account_type": account_type,                         # "current" or "savings"
+        "currency": CURRENCY_BY_COUNTRY[customer["country"]],
+        "opened_date": opened_date.isoformat(),
+        "closed_date": None,
+        "status": "open",
+    }
+
+
 def build_starting_accounts(customer_records) -> list[dict]:
-    """Gives every customer a current account and some customers a savings account, 
-    returning the accounts as records."""
+    """Gives every customer a current account and some customers a savings account."""
     account_records = []
-    next_account_number = 1 # used to generate unique account IDs
 
     for customer in customer_records:
         signup_date = datetime.date.fromisoformat(customer["signup_date"])
-        currency = CURRENCY_BY_COUNTRY[customer["country"]]
 
-        # every customer has a current account, opened when they sign up
-        account_records.append({
-            "account_id": f"acc_{next_account_number:04d}",
-            "customer_id": customer["customer_id"],
-            "account_type": "current",
-            "currency": currency,
-            "opened_date": signup_date.isoformat(),
-            "closed_date": None,
-            "status": "open"
-        })
-        next_account_number += 1
+        account_records.append(build_account(
+            len(account_records) + 1, customer, "current", signup_date))
 
-        # some customers also have a savings account, opened at a random date after signup
         if random.random() < SAVINGS_ACCOUNT_PROBABILITY:
-            savings_opened_date = random_date(signup_date, START_DATE - datetime.timedelta(days=1))
-            account_records.append({
-                "account_id": f"acc_{next_account_number:04d}",
-                "customer_id": customer["customer_id"],
-                "account_type": "savings",
-                "currency": currency,
-                "opened_date": savings_opened_date.isoformat(),
-                "closed_date": None,
-                "status": "open"
-            })
-            next_account_number += 1
+            savings_opened_date = random_date(
+                signup_date, START_DATE - datetime.timedelta(days=1))
+            account_records.append(build_account(
+                len(account_records) + 1, customer, "savings", savings_opened_date))
+
     return account_records
 
 # daily snapshots of customers and accounts.
 
+
 def add_snapshot_fields(records, snapshot_date) -> list[dict]:
     """Returns a copy of each record with snapshot_date and extracted_at added."""
     extracted_at = datetime.datetime.combine(
-        snapshot_date + datetime.timedelta(days=1), # the next day, when the snapshot is extracted
-        datetime.time(2, 0) # at 2am
-        )
+        # the next day, when the snapshot is extracted
+        snapshot_date + datetime.timedelta(days=1),
+        datetime.time(2, 0)  # at 2am
+    )
     snapshot = []
     for record in records:
         snapshot.append({
@@ -196,6 +193,7 @@ def add_snapshot_fields(records, snapshot_date) -> list[dict]:
             **record,
         })
     return snapshot
+
 
 # write the records to NDJSON files
 
@@ -222,11 +220,14 @@ if __name__ == "__main__":
     for day_number in range(NUMBER_OF_DAYS):
         today = START_DATE + datetime.timedelta(days=day_number)
         write_ndjson(
-            add_snapshot_fields(customers, today),         # stamp today's dates on every customer
-            f"data/customers/{today.isoformat()}.ndjson",  # e.g. data/customers/2026-07-01.ndjson
+            # stamp today's dates on every customer
+            add_snapshot_fields(customers, today),
+            # e.g. data/customers/2026-07-01.ndjson
+            f"data/customers/{today.isoformat()}.ndjson",
         )
 
         write_ndjson(
             add_snapshot_fields(accounts, today),          # same for accounts
-            f"data/accounts/{today.isoformat()}.ndjson",  # e.g. data/accounts/2026-07-01.ndjson
+            # e.g. data/accounts/2026-07-01.ndjson
+            f"data/accounts/{today.isoformat()}.ndjson",
         )
