@@ -17,7 +17,7 @@ Run with:
 
 import json  # turns python data into JSON text
 import os  # works with the operating system, like creating files and folders.
-
+import uuid  # generates unique IDs
 import random  # generates random numbers, used for creating random data.
 import datetime  # works with dates and times.
 
@@ -46,6 +46,23 @@ CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
     "ES": "EUR"
 }
 
+MAX_DAILY_TAPS = 3          # each open current account makes 0 to 3 card taps a day
+DECLINE_CHANCE = 0.05       # 1 in 20 taps is declined
+LATE_ARRIVAL_CHANCE = 0.02  # 1 in 50 taps reaches the warehouse hours late
+
+DECLINE_REASONS = ["insufficient_funds", "suspected_fraud", "card_expired", "incorrect_pin"]
+
+# smallest and largest tap per category, in minor units (pence or cents)
+AMOUNT_RANGE_BY_CATEGORY = {
+    "Groceries": (300, 12000),
+    "Eating Out": (400, 6000),
+    "Petrol": (2000, 9000),
+    "Pharmacy": (200, 3000),
+    "Transport": (250, 15000),
+    "General Retail": (1000, 50000),
+    "Health & Beauty": (300, 4000),
+    "Shopping": (500, 30000),
+}
 
 # Merchants are the businesses that customers spend money with.
 # Each merchant has a name, a category, and a Merchant Category Code (MCC).
@@ -210,7 +227,7 @@ def apply_daily_changes(customer_records, account_records, change_date):
 
         elif random.random() < CLOSURE_CHANCE:
             close_customer(customer, account_records, change_date)
-            
+
 # daily snapshots of customers and accounts.
 
 def add_snapshot_fields(records, snapshot_date) -> list[dict]:
@@ -228,6 +245,58 @@ def add_snapshot_fields(records, snapshot_date) -> list[dict]:
             **record,
         })
     return snapshot
+
+def random_time_on(day) -> datetime.datetime:
+    """Returns a random moment during the given day."""
+    midnight = datetime.datetime.combine(day, datetime.time(0, 0))
+    return midnight + datetime.timedelta(seconds=random.randint(0, 24 * 60 * 60 - 1))
+
+
+def build_authorisation(account, merchant, today) -> dict:
+    """Makes one card tap on an account at a merchant."""
+    created_ts = random_time_on(today)
+
+    # most taps reach the warehouse within half an hour, a few arrive hours later
+    delay = datetime.timedelta(minutes=random.randint(1, 30))
+    if random.random() < LATE_ARRIVAL_CHANCE:
+        delay = delay + datetime.timedelta(hours=random.randint(1, 24))
+    ingested_ts = created_ts + delay
+
+    # an amount that suits what the merchant sells
+    smallest, largest = AMOUNT_RANGE_BY_CATEGORY[merchant["category"]]
+
+    if random.random() < DECLINE_CHANCE:
+        outcome = "declined"
+        decline_reason = random.choice(DECLINE_REASONS)
+    else:
+        outcome = "approved"
+        decline_reason = None
+
+    return {
+        "event_id": str(uuid.UUID(int=random.getrandbits(128), version=4)),
+        "account_id": account["account_id"],
+        "merchant_id": merchant["merchant_id"],
+        "mcc": merchant["mcc"],
+        "amount_minor": random.randint(smallest, largest),
+        "currency": account["currency"],
+        "outcome": outcome,
+        "decline_reason": decline_reason,
+        "created_ts": created_ts.isoformat(),
+        "ingested_ts": ingested_ts.isoformat(),
+    }
+def build_daily_authorisations(accounts, merchants, today) -> list[dict]:
+    """Makes today's card taps for every open current account."""
+    authorisations = []
+
+    for account in accounts:
+        if account["account_type"] != "current" or account["status"] != "open":
+            continue  # savings accounts have no card, and closed accounts can't spend
+
+        for _ in range(random.randint(0, MAX_DAILY_TAPS)):
+            merchant = random.choice(merchants)
+            authorisations.append(build_authorisation(account, merchant, today))
+
+    return authorisations
 
 
 # write the records to NDJSON files
@@ -247,14 +316,17 @@ def write_ndjson(records, filename):
 
 # runs the data generation functions and writes the output to NDJSON files.
 if __name__ == "__main__":
-    write_ndjson(build_merchants(), "data/merchants.ndjson")
+    merchants = build_merchants()                         # ← now kept in a variable
+    write_ndjson(merchants, "data/merchants.ndjson")
 
     customers = build_starting_customers()
-
     accounts = build_starting_accounts(customers)
+
+    authorisations_by_ingestion_date = {}                 # ← new: empty, filled during the loop
+
     for day_number in range(NUMBER_OF_DAYS):
         today = START_DATE + datetime.timedelta(days=day_number)
-        apply_daily_changes(customers, accounts, today)  # signups, moves and closures for today
+        apply_daily_changes(customers, accounts, today)
 
         write_ndjson(
             # stamp today's dates on every customer
@@ -268,3 +340,13 @@ if __name__ == "__main__":
             # e.g. data/accounts/2026-07-01.ndjson
             f"data/accounts/{today.isoformat()}.ndjson",
         )
+
+        for authorisation in build_daily_authorisations(accounts, merchants, today):
+            ingestion_date = authorisation["ingested_ts"][:10]
+            if ingestion_date not in authorisations_by_ingestion_date:
+                authorisations_by_ingestion_date[ingestion_date] = []
+            authorisations_by_ingestion_date[ingestion_date].append(authorisation)
+
+    # after all 92 days, write one file per ingestion date
+    for ingestion_date, day_authorisations in authorisations_by_ingestion_date.items():
+        write_ndjson(day_authorisations, f"data/card_authorisations/{ingestion_date}.ndjson")
