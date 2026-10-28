@@ -54,6 +54,11 @@ DECLINE_REASONS = ["insufficient_funds", "suspected_fraud", "card_expired", "inc
 
 DUPLICATE_CHANCE = 0.01  # 1 in 100 taps is delivered twice
 
+NEVER_SETTLES_CHANCE = 0.03  # 3 in 100 approved taps are never claimed by the merchant
+REFUND_CHANCE = 0.02         # 2 in 100 captures are later refunded
+TIP_MCCS = ["5812", "5814"]  # restaurants and cafes: can settle up to 20% higher, for tips
+FUEL_MCCS = ["5541"]         # petrol stations: settle for what was actually pumped, often less
+
 # smallest and largest tap per category, in minor units (pence or cents)
 AMOUNT_RANGE_BY_CATEGORY = {
     "Groceries": (300, 12000),
@@ -305,6 +310,64 @@ def build_daily_authorisations(accounts, merchants, today) -> list[dict]:
     return authorisations
 
 
+def add_by_ingestion_date(grouped, record):
+    """Files a record under the date it reached the warehouse."""
+    ingestion_date = record["ingested_ts"][:10]
+    if ingestion_date not in grouped:
+        grouped[ingestion_date] = []
+    grouped[ingestion_date].append(record)
+
+
+# payments are the settlements: the merchant claiming the money a few days after the tap.
+# Each one points back to its tap through authorisation_event_id. See ADR 2.
+
+def settlement_time(day) -> datetime.datetime:
+    """Merchants send their claims in a nightly batch, between 22:00 and 23:00."""
+    return datetime.datetime.combine(day, datetime.time(22, 0)) + datetime.timedelta(minutes=random.randint(0, 59))
+
+
+def build_payment(authorisation, settlement_type, amount_minor, created_ts) -> dict:
+    """Makes one settlement event for a tap: a capture or a refund."""
+    ingested_ts = created_ts + datetime.timedelta(minutes=random.randint(1, 30))
+
+    return {
+        "event_id": str(uuid.UUID(int=random.getrandbits(128), version=4)),
+        "authorisation_event_id": authorisation["event_id"],
+        "account_id": authorisation["account_id"],
+        "merchant_id": authorisation["merchant_id"],
+        "amount_minor": amount_minor,
+        "currency": authorisation["currency"],
+        "settlement_type": settlement_type,
+        "created_ts": created_ts.isoformat(),
+        "ingested_ts": ingested_ts.isoformat(),
+    }
+
+
+def build_settlements(authorisation) -> list[dict]:
+    """Returns the payments for one approved tap: none, a capture, or a capture and a refund."""
+    if random.random() < NEVER_SETTLES_CHANCE:
+        return []  # the merchant never claims it, so it stays pending
+
+    # the capture amount: usually what was authorised, with tips and fuel as exceptions
+    amount = authorisation["amount_minor"]
+    if authorisation["mcc"] in TIP_MCCS:
+        amount = round(amount * random.uniform(1.0, 1.2))
+    elif authorisation["mcc"] in FUEL_MCCS:
+        amount = round(amount * random.uniform(0.4, 1.0))
+
+    # the merchant claims it in their batch 1 to 3 days after the tap
+    tap_day = datetime.datetime.fromisoformat(authorisation["created_ts"]).date()
+    capture_time = settlement_time(tap_day + datetime.timedelta(days=random.randint(1, 3)))
+    payments = [build_payment(authorisation, "capture", amount, capture_time)]
+
+    # occasionally the money is given back a few days later
+    if random.random() < REFUND_CHANCE:
+        refund_time = settlement_time(capture_time.date() + datetime.timedelta(days=random.randint(1, 10)))
+        payments.append(build_payment(authorisation, "refund", amount, refund_time))
+
+    return payments
+
+
 # write the records to NDJSON files
 
 def write_ndjson(records, filename):
@@ -322,13 +385,15 @@ def write_ndjson(records, filename):
 
 # runs the data generation functions and writes the output to NDJSON files.
 if __name__ == "__main__":
-    merchants = build_merchants()                         # ← now kept in a variable
+    merchants = build_merchants()  # kept in a variable, the card taps need it
     write_ndjson(merchants, "data/merchants.ndjson")
 
     customers = build_starting_customers()
     accounts = build_starting_accounts(customers)
 
-    authorisations_by_ingestion_date = {}                 # ← new: empty, filled during the loop
+    authorisations_by_ingestion_date = {}  # filled during the loop, written at the end
+    payments_by_ingestion_date = {}
+    settled_event_ids = set()  # taps already settled, so a duplicate delivery isn't settled twice
 
     for day_number in range(NUMBER_OF_DAYS):
         today = START_DATE + datetime.timedelta(days=day_number)
@@ -348,11 +413,17 @@ if __name__ == "__main__":
         )
 
         for authorisation in build_daily_authorisations(accounts, merchants, today):
-            ingestion_date = authorisation["ingested_ts"][:10]
-            if ingestion_date not in authorisations_by_ingestion_date:
-                authorisations_by_ingestion_date[ingestion_date] = []
-            authorisations_by_ingestion_date[ingestion_date].append(authorisation)
+            add_by_ingestion_date(authorisations_by_ingestion_date, authorisation)
+
+            # settle each approved tap once, even if it was delivered twice
+            if authorisation["outcome"] == "approved" and authorisation["event_id"] not in settled_event_ids:
+                settled_event_ids.add(authorisation["event_id"])
+                for payment in build_settlements(authorisation):
+                    add_by_ingestion_date(payments_by_ingestion_date, payment)
 
     # after all 92 days, write one file per ingestion date
-    for ingestion_date, day_authorisations in authorisations_by_ingestion_date.items():
+    for ingestion_date, day_authorisations in sorted(authorisations_by_ingestion_date.items()):
         write_ndjson(day_authorisations, f"data/card_authorisations/{ingestion_date}.ndjson")
+
+    for ingestion_date, day_payments in sorted(payments_by_ingestion_date.items()):
+        write_ndjson(day_payments, f"data/payments/{ingestion_date}.ndjson")
