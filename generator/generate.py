@@ -52,6 +52,8 @@ LATE_ARRIVAL_CHANCE = 0.02  # 1 in 50 taps reaches the warehouse hours late
 
 DECLINE_REASONS = ["insufficient_funds", "suspected_fraud", "card_expired", "incorrect_pin"]
 
+DUPLICATE_CHANCE = 0.01  # 1 in 100 taps is delivered twice
+
 # smallest and largest tap per category, in minor units (pence or cents)
 AMOUNT_RANGE_BY_CATEGORY = {
     "Groceries": (300, 12000),
@@ -294,7 +296,11 @@ def build_daily_authorisations(accounts, merchants, today) -> list[dict]:
 
         for _ in range(random.randint(0, MAX_DAILY_TAPS)):
             merchant = random.choice(merchants)
-            authorisations.append(build_authorisation(account, merchant, today))
+            authorisation_record = build_authorisation(account, merchant, today)
+            authorisations.append(authorisation_record)
+
+            if random.random() < DUPLICATE_CHANCE:
+                authorisations.append(dict(authorisation_record))  # the same event, delivered again
 
     return authorisations
 
