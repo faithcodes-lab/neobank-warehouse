@@ -95,7 +95,8 @@ LAST_NAMES = [
     "Walsh", "Smith", "Johnson", "Williams", "Brown", "Jones", "Miller", "Davis",
     "Garcia", "Rodriguez", "Wilson", "Martinez", "Anderson", "Taylor",
     "Thomas", "Hernandez", "Moore", "Martin", "Jackson", "Thompson",
-    "White", "Lopez", "Lee", "Gonzalez", "Harris", "Clark", "Lewis", "Robinson", "Walker", "Perez", "Hall", "Young", "Allen"
+    "White", "Lopez", "Lee", "Gonzalez", "Harris", "Clark", "Lewis", 
+    "Robinson", "Walker", "Perez", "Hall", "Young", "Allen"
 ]
 
 # randomly generates a customer name by picking a first and last name from the lists above.
@@ -116,7 +117,7 @@ def random_date(start, end)-> datetime.date:
 
 def build_starting_customers()-> list[dict]:
     """Build the initial set of customers."""
-    customers = []
+    customer_records = []
 
     for numbers in range(1, STARTING_CUSTOMERS + 1):
         customer_id = f"cus_{numbers:04d}"
@@ -134,25 +135,26 @@ def build_starting_customers()-> list[dict]:
             "signup_date": signup_date.isoformat(),
             "closed_date": None  # customers are active at the start
         }
-        customers.append(customer)
-    return customers
+        customer_records.append(customer)
+    return customer_records
 
 
 # Accounts are the bank accounts that customers have.
 # Each account has a unique ID, a customer who owns it, a type (current or savings),
 # a currency, an opened date, a closed date (if applicable), and a status (open or closed).
 
-def build_starting_accounts(customers) -> list[dict]:
-    """Gives every customer a current account and some customers a savings account, returning the accounts as records."""
-    accounts = []
+def build_starting_accounts(customer_records) -> list[dict]:
+    """Gives every customer a current account and some customers a savings account, 
+    returning the accounts as records."""
+    account_records = []
     next_account_number = 1 # used to generate unique account IDs
 
-    for customer in customers:
+    for customer in customer_records:
         signup_date = datetime.date.fromisoformat(customer["signup_date"])
         currency = CURRENCY_BY_COUNTRY[customer["country"]]
 
         # every customer has a current account, opened when they sign up
-        accounts.append({
+        account_records.append({
             "account_id": f"acc_{next_account_number:04d}",
             "customer_id": customer["customer_id"],
             "account_type": "current",
@@ -166,7 +168,7 @@ def build_starting_accounts(customers) -> list[dict]:
         # some customers also have a savings account, opened at a random date after signup
         if random.random() < SAVINGS_ACCOUNT_PROBABILITY:
             savings_opened_date = random_date(signup_date, START_DATE - datetime.timedelta(days=1))
-            accounts.append({
+            account_records.append({
                 "account_id": f"acc_{next_account_number:04d}",
                 "customer_id": customer["customer_id"],
                 "account_type": "savings",
@@ -176,10 +178,24 @@ def build_starting_accounts(customers) -> list[dict]:
                 "status": "open"
             })
             next_account_number += 1
-    return accounts
+    return account_records
 
+# daily snapshots of customers and accounts.
 
-
+def add_snapshot_fields(records, snapshot_date) -> list[dict]:
+    """Returns a copy of each record with snapshot_date and extracted_at added."""
+    extracted_at = datetime.datetime.combine(
+        snapshot_date + datetime.timedelta(days=1), # the next day, when the snapshot is extracted
+        datetime.time(2, 0) # at 2am
+        )
+    snapshot = []
+    for record in records:
+        snapshot.append({
+            "snapshot_date": snapshot_date.isoformat(),
+            "extracted_at": extracted_at.isoformat(),
+            **record,
+        })
+    return snapshot
 
 # write the records to NDJSON files
 
@@ -189,7 +205,7 @@ def write_ndjson(records, filename):
     if folder:
         os.makedirs(folder, exist_ok=True)
 
-    with open(filename, "w") as f:
+    with open(filename, "w", encoding="utf-8") as f:
         for record in records:
             f.write(json.dumps(record) + "\n")
 
@@ -201,7 +217,16 @@ if __name__ == "__main__":
     write_ndjson(build_merchants(), "data/merchants.ndjson")
 
     customers = build_starting_customers()
-    write_ndjson(customers, "data/customers.ndjson")
 
     accounts = build_starting_accounts(customers)
-    write_ndjson(accounts, "data/accounts.ndjson")
+    for day_number in range(NUMBER_OF_DAYS):
+        today = START_DATE + datetime.timedelta(days=day_number)
+        write_ndjson(
+            add_snapshot_fields(customers, today),         # stamp today's dates on every customer
+            f"data/customers/{today.isoformat()}.ndjson",  # e.g. data/customers/2026-07-01.ndjson
+        )
+
+        write_ndjson(
+            add_snapshot_fields(accounts, today),          # same for accounts
+            f"data/accounts/{today.isoformat()}.ndjson",  # e.g. data/accounts/2026-07-01.ndjson
+        )
