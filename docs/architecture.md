@@ -116,7 +116,7 @@ usage can later be attributed per model rather than appearing as one anonymous t
 
 Three things you run, in order:
 
-1. `python generator/...` writes the files
+1. `python generator/generate.py` writes the files
 2. `bq load` puts them in BigQuery
 3. `dbt run` builds everything on top
 
