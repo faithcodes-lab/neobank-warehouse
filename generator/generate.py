@@ -44,6 +44,14 @@ CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
     "ES": "EUR"
 }
 
+UTC_OFFSET_HOURS_BY_COUNTRY = {
+    "GB": 1, # British Summer Time (BST) is UTC+1
+    "US": -4, # Eastern Daylight Time (EDT) is UTC-4
+    "DE": 2, # Central European Summer Time (CEST) is UTC+2
+    "FR": 2, # Central European Summer Time (CEST) is UTC+2
+    "ES": 2, # Central European Summer Time (CEST) is UTC+2
+}
+
 # How card taps behave
 MAX_DAILY_TAPS = 3          # each open current account makes 0 to 3 card taps a day
 DECLINE_CHANCE = 0.05       # 1 in 20 taps is declined
@@ -71,6 +79,7 @@ REFUND_CHANCE = 0.02         # 2 in 100 captures are later refunded
 TIP_MCCS = ["5812", "5814"]
 # petrol stations: settle for what was actually pumped, often less
 FUEL_MCCS = ["5541"]
+
 
 # Merchants are the businesses that customers spend money with.
 # Each merchant has a name, a category, and a Merchant Category Code (MCC).
@@ -259,7 +268,6 @@ def build_starting_customers() -> list[dict]:
 
 # Accounts are the bank accounts that customers have.
 
-
 def build_account(number: int, customer: dict, account_type: str, opened_date: datetime.date) -> dict:
     """Makes one open account for a customer."""
     return {
@@ -325,21 +333,30 @@ def apply_daily_changes(customer_records: list[dict], account_records: list[dict
         elif random.random() < CLOSURE_CHANCE:
             close_customer(customer, account_records, change_date)
 
-# daily snapshots of customers and accounts.
+def local_timezone(country: str) -> datetime.timezone:
+    """Returns the summer time zone for a country, as an offset from UTC."""
+    return datetime.timezone(datetime.timedelta(hours=UTC_OFFSET_HOURS_BY_COUNTRY[country]))
 
+
+def to_utc_text(moment: datetime.datetime) -> str:
+    """Converts a moment to UTC and writes it with a Z, like 2026-07-01T08:00:00Z."""
+    return moment.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+# daily snapshots of customers and accounts.
 
 def add_snapshot_fields(records: list[dict], snapshot_date: datetime.date) -> list[dict]:
     """Returns a copy of each record with snapshot_date and extracted_at added."""
     extracted_at = datetime.datetime.combine(
         # the next day, when the snapshot is extracted
         snapshot_date + datetime.timedelta(days=1),
-        datetime.time(2, 0)  # at 2am
+        datetime.time(2, 0),  # at 2am
+        tzinfo=datetime.timezone.utc # the bank's own clock
     )
     snapshot = []
     for record in records:
         snapshot.append({
             "snapshot_date": snapshot_date.isoformat(),
-            "extracted_at": extracted_at.isoformat(),
+            "extracted_at": to_utc_text(extracted_at),
             **record,
         })
     return snapshot
