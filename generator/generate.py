@@ -20,6 +20,7 @@ import os  # works with the operating system, like creating files and folders.
 import uuid  # generates unique IDs
 import random  # generates random numbers, used for creating random data.
 import datetime  # works with dates and times.
+import shutil  # for deleting the data folder before generating new data
 
 # set the random seed for reproducibility
 random.seed(42)
@@ -505,6 +506,10 @@ def write_ndjson(records: list[dict], filename: str) -> None:
 
 # runs the data generation functions and writes the output to NDJSON files.
 if __name__ == "__main__":
+
+    # start from an empty data folder, so no file from an earlier run is left behind
+    shutil.rmtree("data", ignore_errors=True)
+
     merchants = build_merchants()  # kept in a variable, the card taps need it
     write_ndjson(merchants, "data/merchants.ndjson")
 
