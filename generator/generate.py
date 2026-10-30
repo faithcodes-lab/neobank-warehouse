@@ -362,15 +362,15 @@ def add_snapshot_fields(records: list[dict], snapshot_date: datetime.date) -> li
     return snapshot
 
 
-def random_time_on(day: datetime.date) -> datetime.datetime:
-    """Returns a random moment during the given day."""
-    midnight = datetime.datetime.combine(day, datetime.time(0, 0))
+def random_time_on(day: datetime.date, timezone: datetime.timezone) -> datetime.datetime:
+    """Returns a random moment during the given day, in the specified timezone."""
+    midnight = datetime.datetime.combine(day, datetime.time(0, 0), tzinfo=timezone)
     return midnight + datetime.timedelta(seconds=random.randint(0, 24 * 60 * 60 - 1))
 
 
 def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) -> dict:
     """Makes one card tap on an account at a merchant."""
-    created_ts = random_time_on(auth_day)
+    created_ts = random_time_on(auth_day, local_timezone(merchant["country"]))
 
     # most taps reach the warehouse within half an hour, a few arrive hours later
     delay = datetime.timedelta(minutes=random.randint(1, 30))
@@ -397,12 +397,11 @@ def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) 
         "currency": account["currency"],
         "outcome": outcome,
         "decline_reason": decline_reason,
-        "created_ts": created_ts.isoformat(),
-        "ingested_ts": ingested_ts.isoformat(),
+        "created_ts": created_ts.isoformat(), # the shop's local time, with its offset
+        "ingested_ts": to_utc_text(ingested_ts), # the warehouse's clock, in UTC
     }
 
-
-def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], current_day: datetime.date) -> list[dict]:
+def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], country_by_customer_id: dict, current_day: datetime.date) -> list[dict]:
     """Makes today's card taps for every open current account."""
     authorisations = []
 
@@ -410,8 +409,12 @@ def build_daily_authorisations(account_records: list[dict], merchant_records: li
         if account["account_type"] != "current" or account["status"] != "open":
             continue  # savings accounts have no card, and closed accounts can't spend
 
+        # customers only shop in the country they live in
+        home_country = country_by_customer_id[account["customer_id"]]
+        local_merchants = [m for m in merchant_records if m["country"] == home_country]
+
         for _ in range(random.randint(0, MAX_DAILY_TAPS)):
-            merchant = random.choice(merchant_records)
+            merchant = random.choice(local_merchants)
             authorisation_record = build_authorisation(
                 account, merchant, current_day)
             authorisations.append(authorisation_record)
@@ -434,10 +437,9 @@ def add_by_ingestion_date(grouped: dict, record: dict) -> None:
 # payments are the settlements: the merchant claiming the money a few days after the tap.
 # Each one points back to its tap through authorisation_event_id. See ADR 2.
 
-def settlement_time(day: datetime.date) -> datetime.datetime:
-    """Merchants send their claims in a nightly batch, between 22:00 and 23:00."""
-    return datetime.datetime.combine(day, datetime.time(22, 0)) + datetime.timedelta(minutes=random.randint(0, 59))
-
+def settlement_time(day: datetime.date, timezone: datetime.timezone) -> datetime.datetime:
+    """Merchants send their claims in a nightly batch, between 22:00 and 23:00 their time."""
+    return datetime.datetime.combine(day, datetime.time(22, 0), tzinfo=timezone) + datetime.timedelta(minutes=random.randint(0, 59))
 
 def build_payment(tap_authorisation: dict, settlement_type: str, amount_minor: int, created_ts: datetime.datetime) -> dict:
     """Makes one settlement event for a tap: a capture or a refund."""
@@ -453,7 +455,7 @@ def build_payment(tap_authorisation: dict, settlement_type: str, amount_minor: i
         "currency": tap_authorisation["currency"],
         "settlement_type": settlement_type,
         "created_ts": created_ts.isoformat(),
-        "ingested_ts": ingested_ts.isoformat(),
+        "ingested_ts": to_utc_text(ingested_ts),
     }
 
 
@@ -470,17 +472,16 @@ def build_settlements(tap_authorisation: dict) -> list[dict]:
         amount = round(amount * random.uniform(0.4, 1.0))
 
     # the merchant claims it in their batch 1 to 3 days after the tap
-    tap_day = datetime.datetime.fromisoformat(
-        tap_authorisation["created_ts"]).date()
+    tap_moment = datetime.datetime.fromisoformat(tap_authorisation["created_ts"])
     capture_time = settlement_time(
-        tap_day + datetime.timedelta(days=random.randint(1, 3)))
+        tap_moment.date() + datetime.timedelta(days=random.randint(1, 3)), tap_moment.tzinfo)
     payments = [build_payment(
         tap_authorisation, "capture", amount, capture_time)]
 
     # occasionally the money is given back a few days later
     if random.random() < REFUND_CHANCE:
         refund_time = settlement_time(
-            capture_time.date() + datetime.timedelta(days=random.randint(1, 10)))
+            capture_time.date() + datetime.timedelta(days=random.randint(1, 10)), tap_moment.tzinfo)
         payments.append(build_payment(tap_authorisation,
                         "refund", amount, refund_time))
 
@@ -533,7 +534,9 @@ if __name__ == "__main__":
             f"data/accounts/{today.isoformat()}.ndjson",
         )
 
-        for authorisation in build_daily_authorisations(accounts, merchants, today):
+        # where each customer lives today, so their card taps are at local shops
+        country_by_customer_id = {c["customer_id"]: c["country"] for c in customers}
+        for authorisation in build_daily_authorisations(accounts, merchants, country_by_customer_id, today):
             add_by_ingestion_date(
                 authorisations_by_ingestion_date, authorisation)
 
