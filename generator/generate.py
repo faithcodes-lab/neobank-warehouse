@@ -402,6 +402,17 @@ def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) 
         "ingested_ts": to_utc_text(ingested_ts), # the warehouse's clock, in UTC
     }
 
+
+def redelivered(record: dict) -> dict:
+    """Returns a copy of an event delivered again, 5 minutes to 6 hours after the original."""
+    first_arrival = datetime.datetime.fromisoformat(record["ingested_ts"])
+    delay = datetime.timedelta(minutes=random.randint(5, 6 * 60))
+
+    copy = dict(record)
+    copy["ingested_ts"] = to_utc_text(first_arrival + delay)
+    return copy
+
+
 def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], country_by_customer_id: dict, current_day: datetime.date) -> list[dict]:
     """Makes today's card taps for every open current account."""
     authorisations = []
@@ -421,8 +432,8 @@ def build_daily_authorisations(account_records: list[dict], merchant_records: li
             authorisations.append(authorisation_record)
 
             if random.random() < DUPLICATE_CHANCE:
-                # the same event, delivered again
-                authorisations.append(dict(authorisation_record))
+                # the same event, delivered again later
+                authorisations.append(redelivered(authorisation_record))
 
     return authorisations
 
@@ -550,6 +561,10 @@ if __name__ == "__main__":
                 settled_event_ids.add(authorisation["event_id"])
                 for payment in build_settlements(authorisation):
                     add_by_ingestion_date(payments_by_ingestion_date, payment)
+
+                    if random.random() < DUPLICATE_CHANCE:
+                        # the same settlement event, delivered again later
+                        add_by_ingestion_date(payments_by_ingestion_date, redelivered(payment))
 
     # after all 92 days, write one file per ingestion date
     for ingestion_date, day_authorisations in sorted(authorisations_by_ingestion_date.items()):
