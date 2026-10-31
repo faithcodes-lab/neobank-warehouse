@@ -2,10 +2,14 @@
 
 Date: 2026-10-06
 
-Status: accepted, partially. The card authorisation event is settled. The payment, customer and
-account payloads still need working through.
+Status: accepted. The payment, customer and account payloads are in
+[ADR 2](0002-remaining-source-payloads.md).
 
 Amended 2026-10-27: customer countries changed to GB, US, DE, FR and ES.
+
+The card authorisation event below is version 1. [ADR 3](0003-imperfect-source-data.md) adds a
+version 2 layout from 15 August, records `created_ts` in the merchant's local time with its offset,
+and leaves an empty `decline_reason` out of version 2.
 
 ## Context
 
@@ -102,6 +106,5 @@ authorisation would fail on every tipped meal, so the data quality rule has to a
 
 ## Still open
 
-The payment settlement event, the customer snapshot and the account snapshot payloads are not yet
-specified. Same approach: work out what each one needs, then write it down here before the
-generator is built.
+Nothing. The payment settlement event and the customer and account snapshots were decided in
+[ADR 2](0002-remaining-source-payloads.md).
