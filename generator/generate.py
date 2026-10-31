@@ -81,6 +81,12 @@ TIP_MCCS = ["5812", "5814"]
 # petrol stations: settle for what was actually pumped, often less
 FUEL_MCCS = ["5541"]
 
+# Service downtime, see ADR 3 issue 6
+# the card feed is down for six hours, and taps due in that time arrive after it recovers
+FEED_OUTAGE_START = datetime.datetime(2026, 9, 8, 13, 0, tzinfo=datetime.timezone.utc)
+FEED_OUTAGE_END = datetime.datetime(2026, 9, 8, 19, 0, tzinfo=datetime.timezone.utc)
+# the account service's nightly extract fails, and that day's file is never made
+MISSING_ACCOUNT_SNAPSHOT_DATE = datetime.date(2026, 8, 21)
 
 # Merchants are the businesses that customers spend money with.
 # Each merchant has a name, a category, and a Merchant Category Code (MCC).
@@ -413,7 +419,20 @@ def redelivered(record: dict) -> dict:
     return copy
 
 
-def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], country_by_customer_id: dict, current_day: datetime.date) -> list[dict]:
+def held_back_by_outage(tap_authorisation: dict) -> dict:
+    """A tap due to arrive while the card feed is down waits, and arrives after the feed recovers."""
+    arrival = datetime.datetime.fromisoformat(tap_authorisation["ingested_ts"])
+
+    if FEED_OUTAGE_START <= arrival < FEED_OUTAGE_END:
+        held = dict(tap_authorisation)
+        held["ingested_ts"] = to_utc_text(
+            FEED_OUTAGE_END + datetime.timedelta(seconds=random.randint(0, 60 * 60 - 1)))
+        return held
+
+    return tap_authorisation  # the feed was working, so it arrived as normal
+
+
+def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], customer_countries: dict, current_day: datetime.date) -> list[dict]:
     """Makes today's card taps for every open current account."""
     authorisations = []
 
@@ -422,7 +441,7 @@ def build_daily_authorisations(account_records: list[dict], merchant_records: li
             continue  # savings accounts have no card, and closed accounts can't spend
 
         # customers only shop in the country they live in
-        home_country = country_by_customer_id[account["customer_id"]]
+        home_country = customer_countries[account["customer_id"]]
         local_merchants = [m for m in merchant_records if m["country"] == home_country]
 
         for _ in range(random.randint(0, MAX_DAILY_TAPS)):
@@ -544,17 +563,19 @@ if __name__ == "__main__":
             f"data/customers/{today.isoformat()}.ndjson",
         )
 
-        write_ndjson(
-            add_snapshot_fields(accounts, today),          # same for accounts
-            # e.g. data/accounts/2026-07-01.ndjson
-            f"data/accounts/{today.isoformat()}.ndjson",
-        )
+        # the account extract failed that night, so there is no file for that day
+        if today != MISSING_ACCOUNT_SNAPSHOT_DATE:
+            write_ndjson(
+                add_snapshot_fields(accounts, today),          # same for accounts
+                # e.g. data/accounts/2026-07-01.ndjson
+                f"data/accounts/{today.isoformat()}.ndjson",
+            )
 
         # where each customer lives today, so their card taps are at local shops
         country_by_customer_id = {c["customer_id"]: c["country"] for c in customers}
         for authorisation in build_daily_authorisations(accounts, merchants, country_by_customer_id, today):
             add_by_ingestion_date(
-                authorisations_by_ingestion_date, authorisation)
+                authorisations_by_ingestion_date, held_back_by_outage(authorisation))
 
             # settle each approved tap once, even if it was delivered twice
             if authorisation["outcome"] == "approved" and authorisation["event_id"] not in settled_event_ids:
