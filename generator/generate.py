@@ -91,6 +91,9 @@ MISSING_ACCOUNT_SNAPSHOT_DATE = datetime.date(2026, 8, 21)
 # The card service moves to a new message layout, see ADR 3 issue 4
 SCHEMA_V2_START = datetime.date(2026, 8, 15)  # the first day of the rollout
 
+# Some new accounts reach the warehouse late, see ADR 3 issue 5
+LATE_ACCOUNT_CHANCE = 0.1  # 1 in 10 new accounts misses its first 1 or 2 account extracts
+
 # Merchants are the businesses that customers spend money with.
 # Each merchant has a name, a category, and a Merchant Category Code (MCC).
 # The MCC is a four-digit number used to classify merchants by the type of goods or services they provide.
@@ -371,6 +374,28 @@ def add_snapshot_fields(records: list[dict], snapshot_date: datetime.date) -> li
     return snapshot
 
 
+def choose_late_accounts(account_records: list[dict], opened_day: datetime.date, extract_dates: dict) -> None:
+    """Picks which of today's new accounts the nightly extract misses, and when it first catches each."""
+    for account in account_records:
+        if account["opened_date"] != opened_day.isoformat():
+            continue  # only accounts opened today can be late
+
+        if random.random() < LATE_ACCOUNT_CHANCE:
+            days_late = random.randint(1, 2)
+            extract_dates[account["account_id"]] = opened_day + datetime.timedelta(days=days_late)
+
+
+def in_account_extract(account_records: list[dict], extract_day: datetime.date, extract_dates: dict) -> list[dict]:
+    """Returns the accounts the nightly extract picks up: all except new ones it has not caught yet."""
+    picked_up = []
+    for account in account_records:
+        first_extract_date = extract_dates.get(account["account_id"])
+        if first_extract_date is not None and extract_day < first_extract_date:
+            continue  # still being set up, so the extract misses it tonight
+        picked_up.append(account)
+    return picked_up
+
+
 def random_time_on(day: datetime.date, timezone: datetime.timezone) -> datetime.datetime:
     """Returns a random moment during the given day, in the specified timezone."""
     midnight = datetime.datetime.combine(day, datetime.time(0, 0), tzinfo=timezone)
@@ -596,10 +621,14 @@ if __name__ == "__main__":
     payments_by_ingestion_date = {}
     # taps already settled, so a duplicate delivery isn't settled twice
     settled_event_ids = set()
+    # new accounts the extract misses at first, and the day it first picks each one up
+    first_extract_dates = {}
 
     for day_number in range(NUMBER_OF_DAYS):
         today = START_DATE + datetime.timedelta(days=day_number)
         apply_daily_changes(customers, accounts, today)
+        # some new accounts are missed by the nightly extract at first, see ADR 3 issue 5
+        choose_late_accounts(accounts, today, first_extract_dates)
 
         write_ndjson(
             # stamp today's dates on every customer
@@ -611,7 +640,7 @@ if __name__ == "__main__":
         # the account extract failed that night, so there is no file for that day
         if today != MISSING_ACCOUNT_SNAPSHOT_DATE:
             write_ndjson(
-                add_snapshot_fields(accounts, today),          # same for accounts
+                add_snapshot_fields(in_account_extract(accounts, today, first_extract_dates), today),
                 # e.g. data/accounts/2026-07-01.ndjson
                 f"data/accounts/{today.isoformat()}.ndjson",
             )
@@ -621,7 +650,6 @@ if __name__ == "__main__":
         for authorisation in build_daily_authorisations(accounts, merchants, country_by_customer_id, today):
             as_sent = in_sent_layout(held_back_by_outage(authorisation))
             add_by_ingestion_date(authorisations_by_ingestion_date, as_sent)
-
             # settle each approved tap once, even if it was delivered twice
             if authorisation["outcome"] == "approved" and authorisation["event_id"] not in settled_event_ids:
                 settled_event_ids.add(authorisation["event_id"])
