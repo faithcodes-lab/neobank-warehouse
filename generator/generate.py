@@ -88,6 +88,9 @@ FEED_OUTAGE_END = datetime.datetime(2026, 9, 8, 19, 0, tzinfo=datetime.timezone.
 # the account service's nightly extract fails, and that day's file is never made
 MISSING_ACCOUNT_SNAPSHOT_DATE = datetime.date(2026, 8, 21)
 
+# The card service moves to a new message layout, see ADR 3 issue 4
+SCHEMA_V2_START = datetime.date(2026, 8, 15)  # the first day of the rollout
+
 # Merchants are the businesses that customers spend money with.
 # Each merchant has a name, a category, and a Merchant Category Code (MCC).
 # The MCC is a four-digit number used to classify merchants by the type of goods or services they provide.
@@ -283,7 +286,6 @@ def build_account(number: int, customer: dict, account_type: str, opened_date: d
         "account_type": account_type,                     # "current" or "savings"
         "currency": CURRENCY_BY_COUNTRY[customer["country"]],
         "opened_date": opened_date.isoformat(),
-        "closed_date": None,
         "status": "open",
     }
 
@@ -375,6 +377,18 @@ def random_time_on(day: datetime.date, timezone: datetime.timezone) -> datetime.
     return midnight + datetime.timedelta(seconds=random.randint(0, 24 * 60 * 60 - 1))
 
 
+def chance_of_v2(day: datetime.date) -> float:
+    """How likely a tap on this day is sent in the v2 layout, as the upgrade rolls out."""
+    days_since_start = (day - SCHEMA_V2_START).days
+    if days_since_start < 0:
+        return 0.0   # before 15 August: no taps
+    if days_since_start == 0:
+        return 0.25  # 15 August: 1 in 4
+    if days_since_start == 1:
+        return 0.5   # 16 August: 1 in 2
+    return 1.0       # 17 August onwards: all of them
+
+
 def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) -> dict:
     """Makes one card tap on an account at a merchant."""
     created_ts = random_time_on(auth_day, local_timezone(merchant["country"]))
@@ -395,7 +409,7 @@ def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) 
         outcome = "approved"
         decline_reason = None
 
-    return {
+    record = {
         "event_id": str(uuid.UUID(int=random.getrandbits(128), version=4)),
         "account_id": account["account_id"],
         "merchant_id": merchant["merchant_id"],
@@ -407,6 +421,11 @@ def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) 
         "created_ts": created_ts.isoformat(), # the shop's local time, with its offset
         "ingested_ts": to_utc_text(ingested_ts), # the warehouse's clock, in UTC
     }
+
+    # from 15 August the card service moves to the v2 layout, a few servers at a time
+    if random.random() < chance_of_v2(auth_day):
+        record["schema_version"] = 2
+    return record
 
 
 def redelivered(record: dict) -> dict:
@@ -430,6 +449,32 @@ def held_back_by_outage(tap_authorisation: dict) -> dict:
         return held
 
     return tap_authorisation  # the feed was working, so it arrived as normal
+
+
+def in_sent_layout(tap_authorisation: dict) -> dict:
+    """Returns the tap as the card service sends it: v1 as it is, v2 in the new layout."""
+    if "schema_version" not in tap_authorisation:
+        return tap_authorisation  # v1 has no version field and is sent unchanged
+
+    sent = {
+        "event_id": tap_authorisation["event_id"],
+        "schema_version": 2,
+        "account_id": tap_authorisation["account_id"],
+        "merchant_id": tap_authorisation["merchant_id"],
+        "mcc": tap_authorisation["mcc"],
+        # amount and currency move inside one nested field
+        "amount": {
+            "value_minor": tap_authorisation["amount_minor"],
+            "currency": tap_authorisation["currency"],
+        },
+        "outcome": tap_authorisation["outcome"],
+    }
+    # v2 leaves out an empty decline reason instead of sending null
+    if tap_authorisation["decline_reason"] is not None:
+        sent["decline_reason"] = tap_authorisation["decline_reason"]
+    sent["created_ts"] = tap_authorisation["created_ts"]
+    sent["ingested_ts"] = tap_authorisation["ingested_ts"]
+    return sent
 
 
 def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], customer_countries: dict, current_day: datetime.date) -> list[dict]:
@@ -574,8 +619,8 @@ if __name__ == "__main__":
         # where each customer lives today, so their card taps are at local shops
         country_by_customer_id = {c["customer_id"]: c["country"] for c in customers}
         for authorisation in build_daily_authorisations(accounts, merchants, country_by_customer_id, today):
-            add_by_ingestion_date(
-                authorisations_by_ingestion_date, held_back_by_outage(authorisation))
+            as_sent = in_sent_layout(held_back_by_outage(authorisation))
+            add_by_ingestion_date(authorisations_by_ingestion_date, as_sent)
 
             # settle each approved tap once, even if it was delivered twice
             if authorisation["outcome"] == "approved" and authorisation["event_id"] not in settled_event_ids:
