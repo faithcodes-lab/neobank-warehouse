@@ -20,6 +20,7 @@ import os  # works with the operating system, like creating files and folders.
 import uuid  # generates unique IDs
 import random  # generates random numbers, used for creating random data.
 import datetime  # works with dates and times.
+import shutil  # for deleting the data folder before generating new data
 
 # set the random seed for reproducibility
 random.seed(42)
@@ -42,6 +43,14 @@ CURRENCY_BY_COUNTRY = {    # maps country codes to currency codes
     "DE": "EUR",
     "FR": "EUR",
     "ES": "EUR"
+}
+
+UTC_OFFSET_HOURS_BY_COUNTRY = {
+    "GB": 1, # British Summer Time (BST) is UTC+1
+    "US": -4, # Eastern Daylight Time (EDT) is UTC-4
+    "DE": 2, # Central European Summer Time (CEST) is UTC+2
+    "FR": 2, # Central European Summer Time (CEST) is UTC+2
+    "ES": 2, # Central European Summer Time (CEST) is UTC+2
 }
 
 # How card taps behave
@@ -72,27 +81,125 @@ TIP_MCCS = ["5812", "5814"]
 # petrol stations: settle for what was actually pumped, often less
 FUEL_MCCS = ["5541"]
 
+# Service downtime, see ADR 3 issue 6
+# the card feed is down for six hours, and taps due in that time arrive after it recovers
+FEED_OUTAGE_START = datetime.datetime(2026, 9, 8, 13, 0, tzinfo=datetime.timezone.utc)
+FEED_OUTAGE_END = datetime.datetime(2026, 9, 8, 19, 0, tzinfo=datetime.timezone.utc)
+# the account service's nightly extract fails, and that day's file is never made
+MISSING_ACCOUNT_SNAPSHOT_DATE = datetime.date(2026, 8, 21)
+
+# The card service moves to a new message layout, see ADR 3 issue 4
+SCHEMA_V2_START = datetime.date(2026, 8, 15)  # the first day of the rollout
+
+# Some new accounts reach the warehouse late, see ADR 3 issue 5
+LATE_ACCOUNT_CHANCE = 0.1  # 1 in 10 new accounts misses its first 1 or 2 account extracts
+
 # Merchants are the businesses that customers spend money with.
 # Each merchant has a name, a category, and a Merchant Category Code (MCC).
 # The MCC is a four-digit number used to classify merchants by the type of goods or services they provide.
 
 MERCHANTS = [
-    {"merchant_name": "Tesco", "category": "Groceries", "mcc": "5411"},
-    {"merchant_name": "Pret", "category": "Eating Out", "mcc": "5812"},
-    {"merchant_name": "Shell", "category": "Petrol", "mcc": "5541"},
-    {"merchant_name": "Lloyds Pharmacy", "category": "Pharmacy", "mcc": "5912"},
-    {"merchant_name": "National Express", "category": "Transport", "mcc": "4111"},
-    {"merchant_name": "JD Sports", "category": "General Retail", "mcc": "5999"},
-    {"merchant_name": "Boots", "category": "Health & Beauty", "mcc": "5912"},
-    {"merchant_name": "Argos", "category": "Shopping", "mcc": "5999"},
-    {"merchant_name": "Sainsburys", "category": "Groceries", "mcc": "5411"},
-    {"merchant_name": "Aldi", "category": "Groceries", "mcc": "5411"},
-    {"merchant_name": "Nandos", "category": "Eating Out", "mcc": "5812"},
-    {"merchant_name": "Greggs", "category": "Eating Out", "mcc": "5814"},
-    {"merchant_name": "BP", "category": "Petrol", "mcc": "5541"},
-    {"merchant_name": "Trainline", "category": "Transport", "mcc": "4112"},
-    {"merchant_name": "Superdrug", "category": "Health & Beauty", "mcc": "5912"},
-    {"merchant_name": "Currys", "category": "General Retail", "mcc": "5732"},
+    # United Kingdom
+    {"merchant_name": "Tesco", "category": "Groceries",
+        "mcc": "5411", "country": "GB"},
+    {"merchant_name": "Pret", "category": "Eating Out",
+        "mcc": "5812", "country": "GB"},
+    {"merchant_name": "Shell", "category": "Petrol", "mcc": "5541", "country": "GB"},
+    {"merchant_name": "Lloyds Pharmacy",
+        "category": "Pharmacy", "mcc": "5912", "country": "GB"},
+    {"merchant_name": "National Express",
+        "category": "Transport", "mcc": "4111", "country": "GB"},
+    {"merchant_name": "JD Sports", "category": "General Retail",
+        "mcc": "5999", "country": "GB"},
+    {"merchant_name": "Boots", "category": "Health & Beauty",
+        "mcc": "5912", "country": "GB"},
+    {"merchant_name": "Argos", "category": "Shopping",
+        "mcc": "5999", "country": "GB"},
+    {"merchant_name": "Sainsburys", "category": "Groceries",
+        "mcc": "5411", "country": "GB"},
+    {"merchant_name": "Aldi", "category": "Groceries",
+        "mcc": "5411", "country": "GB"},
+    {"merchant_name": "Nandos", "category": "Eating Out",
+        "mcc": "5812", "country": "GB"},
+    {"merchant_name": "Greggs", "category": "Eating Out",
+        "mcc": "5814", "country": "GB"},
+    {"merchant_name": "BP", "category": "Petrol", "mcc": "5541", "country": "GB"},
+    {"merchant_name": "Trainline", "category": "Transport",
+        "mcc": "4112", "country": "GB"},
+    {"merchant_name": "Superdrug", "category": "Health & Beauty",
+        "mcc": "5912", "country": "GB"},
+    {"merchant_name": "Currys", "category": "General Retail",
+        "mcc": "5732", "country": "GB"},
+    # United States
+    {"merchant_name": "Whole Foods Market",
+        "category": "Groceries", "mcc": "5411", "country": "US"},
+    {"merchant_name": "Chipotle", "category": "Eating Out",
+        "mcc": "5812", "country": "US"},
+    {"merchant_name": "Starbucks", "category": "Eating Out",
+        "mcc": "5814", "country": "US"},
+    {"merchant_name": "ExxonMobil", "category": "Petrol",
+        "mcc": "5541", "country": "US"},
+    {"merchant_name": "CVS Pharmacy", "category": "Pharmacy",
+        "mcc": "5912", "country": "US"},
+    {"merchant_name": "Amtrak", "category": "Transport",
+        "mcc": "4112", "country": "US"},
+    {"merchant_name": "Best Buy", "category": "General Retail",
+        "mcc": "5732", "country": "US"},
+    {"merchant_name": "Ulta Beauty", "category": "Health & Beauty",
+        "mcc": "5977", "country": "US"},
+    {"merchant_name": "Target", "category": "Shopping",
+        "mcc": "5310", "country": "US"},
+    # Germany
+    {"merchant_name": "REWE", "category": "Groceries",
+        "mcc": "5411", "country": "DE"},
+    {"merchant_name": "Lidl", "category": "Groceries",
+        "mcc": "5411", "country": "DE"},
+    {"merchant_name": "Vapiano", "category": "Eating Out",
+        "mcc": "5812", "country": "DE"},
+    {"merchant_name": "Aral", "category": "Petrol", "mcc": "5541", "country": "DE"},
+    {"merchant_name": "DocMorris", "category": "Pharmacy",
+        "mcc": "5912", "country": "DE"},
+    {"merchant_name": "Deutsche Bahn", "category": "Transport",
+        "mcc": "4112", "country": "DE"},
+    {"merchant_name": "MediaMarkt", "category": "General Retail",
+        "mcc": "5732", "country": "DE"},
+    {"merchant_name": "Douglas", "category": "Health & Beauty",
+        "mcc": "5977", "country": "DE"},
+    # France
+    {"merchant_name": "Carrefour", "category": "Groceries",
+        "mcc": "5411", "country": "FR"},
+    {"merchant_name": "Paul", "category": "Eating Out",
+        "mcc": "5814", "country": "FR"},
+    {"merchant_name": "Flunch", "category": "Eating Out",
+        "mcc": "5812", "country": "FR"},
+    {"merchant_name": "TotalEnergies", "category": "Petrol",
+        "mcc": "5541", "country": "FR"},
+    {"merchant_name": "Pharmacie Lafayette",
+        "category": "Pharmacy", "mcc": "5912", "country": "FR"},
+    {"merchant_name": "SNCF", "category": "Transport",
+        "mcc": "4112", "country": "FR"},
+    {"merchant_name": "Fnac", "category": "General Retail",
+        "mcc": "5732", "country": "FR"},
+    {"merchant_name": "Sephora", "category": "Health & Beauty",
+        "mcc": "5977", "country": "FR"},
+    {"merchant_name": "Galeries Lafayette",
+        "category": "Shopping", "mcc": "5311", "country": "FR"},
+    # Spain
+    {"merchant_name": "Mercadona", "category": "Groceries",
+        "mcc": "5411", "country": "ES"},
+    {"merchant_name": "100 Montaditos", "category": "Eating Out",
+        "mcc": "5812", "country": "ES"},
+    {"merchant_name": "Telepizza", "category": "Eating Out",
+        "mcc": "5814", "country": "ES"},
+    {"merchant_name": "Repsol", "category": "Petrol", "mcc": "5541", "country": "ES"},
+    {"merchant_name": "Renfe", "category": "Transport",
+        "mcc": "4112", "country": "ES"},
+    {"merchant_name": "Worten", "category": "General Retail",
+        "mcc": "5732", "country": "ES"},
+    {"merchant_name": "Druni", "category": "Health & Beauty",
+        "mcc": "5977", "country": "ES"},
+    {"merchant_name": "El Corte Ingles",
+        "category": "Shopping", "mcc": "5311", "country": "ES"}
 ]
 
 
@@ -106,6 +213,7 @@ def build_merchants() -> list[dict]:
             "merchant_name": merchant["merchant_name"],
             "category": merchant["category"],
             "mcc": merchant["mcc"],
+            "country": merchant["country"],
         }
         records.append(record)
 
@@ -173,7 +281,6 @@ def build_starting_customers() -> list[dict]:
 
 # Accounts are the bank accounts that customers have.
 
-
 def build_account(number: int, customer: dict, account_type: str, opened_date: datetime.date) -> dict:
     """Makes one open account for a customer."""
     return {
@@ -182,7 +289,6 @@ def build_account(number: int, customer: dict, account_type: str, opened_date: d
         "account_type": account_type,                     # "current" or "savings"
         "currency": CURRENCY_BY_COUNTRY[customer["country"]],
         "opened_date": opened_date.isoformat(),
-        "closed_date": None,
         "status": "open",
     }
 
@@ -239,35 +345,78 @@ def apply_daily_changes(customer_records: list[dict], account_records: list[dict
         elif random.random() < CLOSURE_CHANCE:
             close_customer(customer, account_records, change_date)
 
-# daily snapshots of customers and accounts.
+def local_timezone(country: str) -> datetime.timezone:
+    """Returns the summer time zone for a country, as an offset from UTC."""
+    return datetime.timezone(datetime.timedelta(hours=UTC_OFFSET_HOURS_BY_COUNTRY[country]))
 
+
+def to_utc_text(moment: datetime.datetime) -> str:
+    """Converts a moment to UTC and writes it with a Z, like 2026-07-01T08:00:00Z."""
+    return moment.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+# daily snapshots of customers and accounts.
 
 def add_snapshot_fields(records: list[dict], snapshot_date: datetime.date) -> list[dict]:
     """Returns a copy of each record with snapshot_date and extracted_at added."""
     extracted_at = datetime.datetime.combine(
         # the next day, when the snapshot is extracted
         snapshot_date + datetime.timedelta(days=1),
-        datetime.time(2, 0)  # at 2am
+        datetime.time(2, 0),  # at 2am
+        tzinfo=datetime.timezone.utc # the bank's own clock
     )
     snapshot = []
     for record in records:
         snapshot.append({
             "snapshot_date": snapshot_date.isoformat(),
-            "extracted_at": extracted_at.isoformat(),
+            "extracted_at": to_utc_text(extracted_at),
             **record,
         })
     return snapshot
 
 
-def random_time_on(day: datetime.date) -> datetime.datetime:
-    """Returns a random moment during the given day."""
-    midnight = datetime.datetime.combine(day, datetime.time(0, 0))
+def choose_late_accounts(account_records: list[dict], opened_day: datetime.date, extract_dates: dict) -> None:
+    """Picks which of today's new accounts the nightly extract misses, and when it first catches each."""
+    for account in account_records:
+        if account["opened_date"] != opened_day.isoformat():
+            continue  # only accounts opened today can be late
+
+        if random.random() < LATE_ACCOUNT_CHANCE:
+            days_late = random.randint(1, 2)
+            extract_dates[account["account_id"]] = opened_day + datetime.timedelta(days=days_late)
+
+
+def in_account_extract(account_records: list[dict], extract_day: datetime.date, extract_dates: dict) -> list[dict]:
+    """Returns the accounts the nightly extract picks up: all except new ones it has not caught yet."""
+    picked_up = []
+    for account in account_records:
+        first_extract_date = extract_dates.get(account["account_id"])
+        if first_extract_date is not None and extract_day < first_extract_date:
+            continue  # still being set up, so the extract misses it tonight
+        picked_up.append(account)
+    return picked_up
+
+
+def random_time_on(day: datetime.date, timezone: datetime.timezone) -> datetime.datetime:
+    """Returns a random moment during the given day, in the specified timezone."""
+    midnight = datetime.datetime.combine(day, datetime.time(0, 0), tzinfo=timezone)
     return midnight + datetime.timedelta(seconds=random.randint(0, 24 * 60 * 60 - 1))
+
+
+def chance_of_v2(day: datetime.date) -> float:
+    """How likely a tap on this day is sent in the v2 layout, as the upgrade rolls out."""
+    days_since_start = (day - SCHEMA_V2_START).days
+    if days_since_start < 0:
+        return 0.0   # before 15 August: no taps
+    if days_since_start == 0:
+        return 0.25  # 15 August: 1 in 4
+    if days_since_start == 1:
+        return 0.5   # 16 August: 1 in 2
+    return 1.0       # 17 August onwards: all of them
 
 
 def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) -> dict:
     """Makes one card tap on an account at a merchant."""
-    created_ts = random_time_on(auth_day)
+    created_ts = random_time_on(auth_day, local_timezone(merchant["country"]))
 
     # most taps reach the warehouse within half an hour, a few arrive hours later
     delay = datetime.timedelta(minutes=random.randint(1, 30))
@@ -285,7 +434,7 @@ def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) 
         outcome = "approved"
         decline_reason = None
 
-    return {
+    record = {
         "event_id": str(uuid.UUID(int=random.getrandbits(128), version=4)),
         "account_id": account["account_id"],
         "merchant_id": merchant["merchant_id"],
@@ -294,12 +443,66 @@ def build_authorisation(account: dict, merchant: dict, auth_day: datetime.date) 
         "currency": account["currency"],
         "outcome": outcome,
         "decline_reason": decline_reason,
-        "created_ts": created_ts.isoformat(),
-        "ingested_ts": ingested_ts.isoformat(),
+        "created_ts": created_ts.isoformat(), # the shop's local time, with its offset
+        "ingested_ts": to_utc_text(ingested_ts), # the warehouse's clock, in UTC
     }
 
+    # from 15 August the card service moves to the v2 layout, a few servers at a time
+    if random.random() < chance_of_v2(auth_day):
+        record["schema_version"] = 2
+    return record
 
-def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], current_day: datetime.date) -> list[dict]:
+
+def redelivered(record: dict) -> dict:
+    """Returns a copy of an event delivered again, 5 minutes to 6 hours after the original."""
+    first_arrival = datetime.datetime.fromisoformat(record["ingested_ts"])
+    delay = datetime.timedelta(minutes=random.randint(5, 6 * 60))
+
+    copy = dict(record)
+    copy["ingested_ts"] = to_utc_text(first_arrival + delay)
+    return copy
+
+
+def held_back_by_outage(tap_authorisation: dict) -> dict:
+    """A tap due to arrive while the card feed is down waits, and arrives after the feed recovers."""
+    arrival = datetime.datetime.fromisoformat(tap_authorisation["ingested_ts"])
+
+    if FEED_OUTAGE_START <= arrival < FEED_OUTAGE_END:
+        held = dict(tap_authorisation)
+        held["ingested_ts"] = to_utc_text(
+            FEED_OUTAGE_END + datetime.timedelta(seconds=random.randint(0, 60 * 60 - 1)))
+        return held
+
+    return tap_authorisation  # the feed was working, so it arrived as normal
+
+
+def in_sent_layout(tap_authorisation: dict) -> dict:
+    """Returns the tap as the card service sends it: v1 as it is, v2 in the new layout."""
+    if "schema_version" not in tap_authorisation:
+        return tap_authorisation  # v1 has no version field and is sent unchanged
+
+    sent = {
+        "event_id": tap_authorisation["event_id"],
+        "schema_version": 2,
+        "account_id": tap_authorisation["account_id"],
+        "merchant_id": tap_authorisation["merchant_id"],
+        "mcc": tap_authorisation["mcc"],
+        # amount and currency move inside one nested field
+        "amount": {
+            "value_minor": tap_authorisation["amount_minor"],
+            "currency": tap_authorisation["currency"],
+        },
+        "outcome": tap_authorisation["outcome"],
+    }
+    # v2 leaves out an empty decline reason instead of sending null
+    if tap_authorisation["decline_reason"] is not None:
+        sent["decline_reason"] = tap_authorisation["decline_reason"]
+    sent["created_ts"] = tap_authorisation["created_ts"]
+    sent["ingested_ts"] = tap_authorisation["ingested_ts"]
+    return sent
+
+
+def build_daily_authorisations(account_records: list[dict], merchant_records: list[dict], customer_countries: dict, current_day: datetime.date) -> list[dict]:
     """Makes today's card taps for every open current account."""
     authorisations = []
 
@@ -307,15 +510,19 @@ def build_daily_authorisations(account_records: list[dict], merchant_records: li
         if account["account_type"] != "current" or account["status"] != "open":
             continue  # savings accounts have no card, and closed accounts can't spend
 
+        # customers only shop in the country they live in
+        home_country = customer_countries[account["customer_id"]]
+        local_merchants = [m for m in merchant_records if m["country"] == home_country]
+
         for _ in range(random.randint(0, MAX_DAILY_TAPS)):
-            merchant = random.choice(merchant_records)
+            merchant = random.choice(local_merchants)
             authorisation_record = build_authorisation(
                 account, merchant, current_day)
             authorisations.append(authorisation_record)
 
             if random.random() < DUPLICATE_CHANCE:
-                # the same event, delivered again
-                authorisations.append(dict(authorisation_record))
+                # the same event, delivered again later
+                authorisations.append(redelivered(authorisation_record))
 
     return authorisations
 
@@ -331,10 +538,9 @@ def add_by_ingestion_date(grouped: dict, record: dict) -> None:
 # payments are the settlements: the merchant claiming the money a few days after the tap.
 # Each one points back to its tap through authorisation_event_id. See ADR 2.
 
-def settlement_time(day: datetime.date) -> datetime.datetime:
-    """Merchants send their claims in a nightly batch, between 22:00 and 23:00."""
-    return datetime.datetime.combine(day, datetime.time(22, 0)) + datetime.timedelta(minutes=random.randint(0, 59))
-
+def settlement_time(day: datetime.date, timezone: datetime.timezone) -> datetime.datetime:
+    """Merchants send their claims in a nightly batch, between 22:00 and 23:00 their time."""
+    return datetime.datetime.combine(day, datetime.time(22, 0), tzinfo=timezone) + datetime.timedelta(minutes=random.randint(0, 59))
 
 def build_payment(tap_authorisation: dict, settlement_type: str, amount_minor: int, created_ts: datetime.datetime) -> dict:
     """Makes one settlement event for a tap: a capture or a refund."""
@@ -350,7 +556,7 @@ def build_payment(tap_authorisation: dict, settlement_type: str, amount_minor: i
         "currency": tap_authorisation["currency"],
         "settlement_type": settlement_type,
         "created_ts": created_ts.isoformat(),
-        "ingested_ts": ingested_ts.isoformat(),
+        "ingested_ts": to_utc_text(ingested_ts),
     }
 
 
@@ -367,17 +573,16 @@ def build_settlements(tap_authorisation: dict) -> list[dict]:
         amount = round(amount * random.uniform(0.4, 1.0))
 
     # the merchant claims it in their batch 1 to 3 days after the tap
-    tap_day = datetime.datetime.fromisoformat(
-        tap_authorisation["created_ts"]).date()
+    tap_moment = datetime.datetime.fromisoformat(tap_authorisation["created_ts"])
     capture_time = settlement_time(
-        tap_day + datetime.timedelta(days=random.randint(1, 3)))
+        tap_moment.date() + datetime.timedelta(days=random.randint(1, 3)), tap_moment.tzinfo)
     payments = [build_payment(
         tap_authorisation, "capture", amount, capture_time)]
 
     # occasionally the money is given back a few days later
     if random.random() < REFUND_CHANCE:
         refund_time = settlement_time(
-            capture_time.date() + datetime.timedelta(days=random.randint(1, 10)))
+            capture_time.date() + datetime.timedelta(days=random.randint(1, 10)), tap_moment.tzinfo)
         payments.append(build_payment(tap_authorisation,
                         "refund", amount, refund_time))
 
@@ -401,6 +606,10 @@ def write_ndjson(records: list[dict], filename: str) -> None:
 
 # runs the data generation functions and writes the output to NDJSON files.
 if __name__ == "__main__":
+
+    # start from an empty data folder, so no file from an earlier run is left behind
+    shutil.rmtree("data", ignore_errors=True)
+
     merchants = build_merchants()  # kept in a variable, the card taps need it
     write_ndjson(merchants, "data/merchants.ndjson")
 
@@ -412,10 +621,14 @@ if __name__ == "__main__":
     payments_by_ingestion_date = {}
     # taps already settled, so a duplicate delivery isn't settled twice
     settled_event_ids = set()
+    # new accounts the extract misses at first, and the day it first picks each one up
+    first_extract_dates = {}
 
     for day_number in range(NUMBER_OF_DAYS):
         today = START_DATE + datetime.timedelta(days=day_number)
         apply_daily_changes(customers, accounts, today)
+        # some new accounts are missed by the nightly extract at first, see ADR 3 issue 5
+        choose_late_accounts(accounts, today, first_extract_dates)
 
         write_ndjson(
             # stamp today's dates on every customer
@@ -424,21 +637,28 @@ if __name__ == "__main__":
             f"data/customers/{today.isoformat()}.ndjson",
         )
 
-        write_ndjson(
-            add_snapshot_fields(accounts, today),          # same for accounts
-            # e.g. data/accounts/2026-07-01.ndjson
-            f"data/accounts/{today.isoformat()}.ndjson",
-        )
+        # the account extract failed that night, so there is no file for that day
+        if today != MISSING_ACCOUNT_SNAPSHOT_DATE:
+            write_ndjson(
+                add_snapshot_fields(in_account_extract(accounts, today, first_extract_dates), today),
+                # e.g. data/accounts/2026-07-01.ndjson
+                f"data/accounts/{today.isoformat()}.ndjson",
+            )
 
-        for authorisation in build_daily_authorisations(accounts, merchants, today):
-            add_by_ingestion_date(
-                authorisations_by_ingestion_date, authorisation)
-
+        # where each customer lives today, so their card taps are at local shops
+        country_by_customer_id = {c["customer_id"]: c["country"] for c in customers}
+        for authorisation in build_daily_authorisations(accounts, merchants, country_by_customer_id, today):
+            as_sent = in_sent_layout(held_back_by_outage(authorisation))
+            add_by_ingestion_date(authorisations_by_ingestion_date, as_sent)
             # settle each approved tap once, even if it was delivered twice
             if authorisation["outcome"] == "approved" and authorisation["event_id"] not in settled_event_ids:
                 settled_event_ids.add(authorisation["event_id"])
                 for payment in build_settlements(authorisation):
                     add_by_ingestion_date(payments_by_ingestion_date, payment)
+
+                    if random.random() < DUPLICATE_CHANCE:
+                        # the same settlement event, delivered again later
+                        add_by_ingestion_date(payments_by_ingestion_date, redelivered(payment))
 
     # after all 92 days, write one file per ingestion date
     for ingestion_date, day_authorisations in sorted(authorisations_by_ingestion_date.items()):

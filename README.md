@@ -45,9 +45,14 @@ design:
 - optional and nullable fields that are absent rather than empty
 - timestamps in mixed timezone offsets
 - occasional referential gaps, where a transaction names an account that arrives later
+- a six hour outage on the card feed, followed by a burst of delayed events
+- a day with no account snapshot at all, which can never be recovered
 
 A pipeline that only works against clean input is not a pipeline. Handling this is the substance
 of the project rather than an edge case bolted on at the end.
+
+Each imperfection, with real scenarios and what staging has to do about it, is decided in
+[ADR 3](docs/adr/0003-imperfect-source-data.md).
 
 ## Dimensional model
 
