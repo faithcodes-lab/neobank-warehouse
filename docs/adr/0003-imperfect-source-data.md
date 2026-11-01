@@ -506,4 +506,5 @@ day as unknown rather than as unchanged, and tests have to check that every day 
 - Spending abroad. Customers only tap in their own country for now. Letting them tap abroad, as
   when travelling, means the merchant charges in its own currency and the account is debited in
   another, so it needs exchange rates. A separate issue for later.
-- Whether raw tables store typed columns or one JSON payload column, decided with the load script
+- ~~Whether raw tables store typed columns or one JSON payload column~~: decided in
+  [ADR 4](0004-raw-tables-store-json.md)
