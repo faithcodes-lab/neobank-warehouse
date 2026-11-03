@@ -41,7 +41,7 @@ flowchart TD
         f5["merchants<br/>no date"]
     end
 
-    load["5. bq load"]
+    load["5. loader/load.py"]
 
     subgraph raw["6. BigQuery raw, never edited"]
         r1[("raw_customers")]
@@ -104,7 +104,7 @@ cloud service this project uses.
 | 2 | the service that owns that area records it | a real bank. This project has none |
 | 3 | one Python generator produces what those services would have sent | a laptop |
 | 4 | the generator writes files. Customer and account write a full daily snapshot, card and payment write one line per event | a laptop |
-| 5 | `bq load` sends each file over | a BigQuery **load job**, reading the file and writing into storage |
+| 5 | `loader/load.py` sends each file over, one load job per file, replacing that day's partition | a BigQuery **load job**, reading the file and writing into storage |
 | 6 | raw tables, exactly what arrived, never edited | BigQuery **storage**. Partitioning is a storage feature, it decides the physical layout |
 | 7 | `dbt run` builds everything above raw | BigQuery **query jobs**. The SQL runs on Google's machines, not the laptop |
 | 8 | staging views rename, type and remove duplicates | **metadata only**. A view is a saved query, so it takes no storage |
@@ -117,7 +117,7 @@ usage can later be attributed per model rather than appearing as one anonymous t
 Three things you run, in order:
 
 1. `python generator/generate.py` writes the files
-2. `bq load` puts them in BigQuery
+2. `python loader/load.py` puts them in BigQuery
 3. `dbt run` builds everything on top
 
 Worth noticing:
