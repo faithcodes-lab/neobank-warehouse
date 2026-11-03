@@ -1,0 +1,72 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      The generator's files, loaded by loader/load.py exactly as they arrived.
+      Each line is stored whole in a JSON payload column (ADR 4).
+    database: neobank-warehouse
+    schema: raw
+    config:
+      loaded_at_field: loaded_at
+      freshness:
+        warn_after: {count: 1, period: day}
+        error_after: {count: 2, period: day}
+    tables:
+      - name: raw_customers
+        description: Daily snapshot of every customer, one partition per snapshot day.
+        columns:
+          - name: payload
+            description: The line from the file, untouched, as JSON.
+          - name: source_file
+            description: The file the row came from, such as customers/2026-07-02.ndjson.
+          - name: ingestion_date
+            description: The date in the file name. The table is partitioned on it.
+          - name: loaded_at
+            description: When loader/load.py ran, in UTC.
+      - name: raw_accounts
+        description: Daily snapshot of every account, one partition per snapshot day.
+        columns:
+          - name: payload
+            description: The line from the file, untouched, as JSON.
+          - name: source_file
+            description: The file the row came from, such as accounts/2026-07-02.ndjson.
+          - name: ingestion_date
+            description: The date in the file name. The table is partitioned on it.
+          - name: loaded_at
+            description: When loader/load.py ran, in UTC.
+      - name: raw_card_authorisations
+        description: Card taps as they arrived, one partition per arrival day. v1 and v2 layouts mixed.
+        columns:
+          - name: payload
+            description: The line from the file, untouched, as JSON.
+          - name: source_file
+            description: The file the row came from, such as card_authorisations/2026-07-02.ndjson.
+          - name: ingestion_date
+            description: The date in the file name. The table is partitioned on it.
+          - name: loaded_at
+            description: When loader/load.py ran, in UTC.
+      - name: raw_payments
+        description: Settlements as they arrived, one partition per arrival day.
+        columns:
+          - name: payload
+            description: The line from the file, untouched, as JSON.
+          - name: source_file
+            description: The file the row came from, such as payments/2026-07-02.ndjson.
+          - name: ingestion_date
+            description: The date in the file name. The table is partitioned on it.
+          - name: loaded_at
+            description: When loader/load.py ran, in UTC.
+      - name: raw_merchants
+        description: The bank's merchant list. One small file, not partitioned.
+        config:
+          freshness: null
+        columns:
+          - name: payload
+            description: The line from the file, untouched, as JSON.
+          - name: source_file
+            description: The file the row came from, merchants.ndjson.
+          - name: ingestion_date
+            description: Always empty. Merchants has no date and is not partitioned.
+          - name: loaded_at
+            description: When loader/load.py ran, in UTC.
