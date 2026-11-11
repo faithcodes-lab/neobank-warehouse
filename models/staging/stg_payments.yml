@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_payments
+    description: >
+      Payment events from raw_payments, one row per event_id. Fields are picked out of the
+      JSON payload and typed, timestamps are converted to UTC, and redelivered copies are
+      removed, keeping the first arrival.
+    columns:
+      - name: event_id
+        description: The payment's own id. The grain of this model.
+        data_tests:
+          - unique
+          - not_null
+      - name: authorisation_event_id
+        description: The card authorisation this payment settles.
+      - name: account_id
+        description: The account charged or refunded.
+      - name: merchant_id
+        description: The merchant that claimed the money.
+      - name: amount_minor
+        description: The amount in minor units, such as pence or cents.
+      - name: currency
+        description: Three letter currency code, such as GBP or EUR.
+      - name: settlement_type
+        description: Whether the merchant captured the money or refunded it.
+      - name: created_at
+        description: When the payment happened, converted from local time to UTC.
+      - name: ingested_at
+        description: When the payment service delivered it, in UTC. The first arrival is kept.
+      - name: source_file
+        description: The raw file the kept row came from.
+      - name: ingestion_date
+        description: The date of that file.
+        
