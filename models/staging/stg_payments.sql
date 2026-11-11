@@ -1,5 +1,5 @@
 -- One row per payment event from raw_payments, with fields picked out of the JSON
--- payload and given their types. Timestamps are converted to UTC.
+-- payload and given their types. Timestamps are converted to UTC and duplicates removed.
 
 with source as (
 
@@ -27,7 +27,7 @@ typed as (
 
 deduplicated as (
 
-    -- A redelivered event keeps its event_id and arrives later (ADR 3, issue 1).
+    -- A redelivered event keeps its event_id and arrives later.
     -- Keep the first arrival. This looks across every day, because a copy can
     -- land in the next day's file.
     select *
