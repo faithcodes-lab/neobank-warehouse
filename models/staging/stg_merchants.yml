@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_merchants
+    description: >
+      The bank's merchant list from raw_merchants, one row per merchant_id, with fields
+      picked out of the JSON payload. mcc is kept as text because it is a code.
+    columns:
+      - name: merchant_id
+        description: The merchant's own id. The grain of this model.
+        data_tests:
+          - unique
+          - not_null
+      - name: merchant_name
+        description: The name customers see, such as Tesco or Pret.
+      - name: category
+        description: The bank's spending category, such as Groceries or Eating Out.
+      - name: mcc
+        description: Merchant category code from the card networks, such as 5812. Text, not a number.
+      - name: country
+        description: Two letter country code where the merchant trades, such as GB.
+      - name: source_file
+        description: The raw file the row came from, merchants.ndjson.
