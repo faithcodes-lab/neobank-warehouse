@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: >
+      Daily customer snapshots from raw_customers, one row per customer_id per snapshot_date.
+      Each file is a full snapshot, so a customer appears once a day by design. These rows are
+      history, not duplicates, and are all kept.
+    data_tests:
+      - unique:
+          column_name: "customer_id || '|' || cast(snapshot_date as string)"
+    columns:
+      - name: snapshot_date
+        description: The day this snapshot describes. Part of the grain.
+        data_tests:
+          - not_null
+      - name: customer_id
+        description: The customer's own id. Part of the grain, together with snapshot_date.
+        data_tests:
+          - not_null
+      - name: full_name
+        description: The customer's name on that day.
+      - name: country
+        description: Two letter country code the customer lived in on that day. Can change over time.
+      - name: date_of_birth
+        description: The customer's date of birth.
+      - name: signup_date
+        description: The day the customer joined the bank.
+      - name: closed_date
+        description: The day the customer left the bank. Empty while they are still a customer.
+      - name: extracted_at
+        description: When the bank took this snapshot, in UTC. 2am the day after snapshot_date.
+      - name: source_file
+        description: The raw file the row came from, such as customers/2026-07-02.ndjson.
+      - name: ingestion_date
+        description: The date of that file.
