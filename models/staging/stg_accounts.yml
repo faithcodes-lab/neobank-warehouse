@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: stg_accounts
+    description: >
+      Daily account snapshots from raw_accounts, one row per account_id per snapshot_date.
+      Each file is a full snapshot, so an account appears once a day by design. There is no
+      snapshot for 21 August, and some new accounts first appear a day or two after opening
+      (ADR 3). Staging keeps what arrived and does not fill these gaps.
+    data_tests:
+      - unique:
+          column_name: "account_id || '|' || cast(snapshot_date as string)"
+    columns:
+      - name: snapshot_date
+        description: The day this snapshot describes. Part of the grain.
+        data_tests:
+          - not_null
+      - name: account_id
+        description: The account's own id. Part of the grain, together with snapshot_date.
+        data_tests:
+          - not_null
+      - name: customer_id
+        description: The customer who holds the account.
+        data_tests:
+          - not_null
+      - name: account_type
+        description: Current or savings.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['current', 'savings']
+      - name: currency
+        description: Three letter currency code the account is held in, such as GBP.
+      - name: status
+        description: Open or closed on that day.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['open', 'closed']
+      - name: opened_date
+        description: The day the account was opened.
+      - name: closed_date
+        description: >
+          The day the account was closed. Absent from the source until the account closes,
+          so empty while it is open.
+      - name: extracted_at
+        description: When the bank took this snapshot, in UTC. 2am the day after snapshot_date.
+      - name: source_file
+        description: The raw file the row came from, such as accounts/2026-07-02.ndjson.
+      - name: ingestion_date
+        description: The date of that file.
