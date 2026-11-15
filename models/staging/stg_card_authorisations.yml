@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: stg_card_authorisations
+    description: >
+      Card authorisations from raw_card_authorisations, one row per event_id. The v1 and
+      v2 layouts are read into the same columns, timestamps are converted to UTC, and
+      redelivered copies are removed, keeping the first arrival.
+    columns:
+      - name: event_id
+        description: The authorisation's own id. The grain of this model.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: The account whose card was used.
+        data_tests:
+          - not_null
+      - name: merchant_id
+        description: The merchant where the card was used.
+      - name: mcc
+        description: The merchant category code, kept as text.
+      - name: amount_minor
+        description: The amount in minor units. Read from amount_minor in v1 and amount.value_minor in v2.
+        data_tests:
+          - not_null
+      - name: currency
+        description: Three letter currency code. Read from currency in v1 and amount.currency in v2.
+        data_tests:
+          - not_null
+      - name: outcome
+        description: Whether the bank approved or declined the tap.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['approved', 'declined']
+      - name: decline_reason
+        description: Why the tap was declined. Null when approved.
+        data_tests:
+          - not_null:
+              config:
+                where: "outcome = 'declined'"
+          - accepted_values:
+              arguments:
+                values: ['card_expired', 'incorrect_pin', 'insufficient_funds', 'suspected_fraud']
+      - name: schema_version
+        description: Which layout the row arrived in. v1 rows have no label, so they are given 1.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2]
+                quote: false
+      - name: created_at
+        description: When the tap happened, converted from local time to UTC.
+      - name: ingested_at
+        description: When the card service delivered it, in UTC. The first arrival is kept.
+      - name: source_file
+        description: The raw file the kept row came from.
+      - name: ingestion_date
+        description: The date of that file.
