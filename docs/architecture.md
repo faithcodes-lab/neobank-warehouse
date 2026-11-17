@@ -1,10 +1,11 @@
 # Architecture
 
-Two diagrams. The first shows the whole pipeline, from something happening in a bank through to
+Three diagrams. The first shows the whole pipeline, from something happening in a bank through to
 the tables people query. The second shows the card payment lifecycle, which is the thing that
-makes the modelling awkward.
+makes the modelling awkward. The third shows how the staging tables link.
 
-All are written in Mermaid, which GitHub renders in the browser.
+The first two are written in Mermaid, which GitHub renders in the browser. The third is drawn in
+MySQL Workbench and saved as an image.
 
 ## What actually runs
 
@@ -194,6 +195,23 @@ settled, because that depends on whether a second event has turned up yet.
 **Two timestamps are needed.** `created_ts` is when it happened, `ingested_ts` is when the
 warehouse received it. A transaction at 23:50 on 31 March arriving at 00:30 on 2 April counts as
 March by the first and April by the second. Both are correct, for different questions.
+
+## How the staging tables link
+
+![Staging ERD](erd/staging_erd.png)
+
+Each line is a foreign key: a column in the child table holding the id of a row in the parent.
+`stg_accounts.customer_id` points at `stg_customers`, and so on. All six are one to many.
+
+**Settles into is zero or many.** A declined card tap never settles, so no payment points at it.
+
+**Customers and accounts have two part keys.** Each is a daily snapshot, so the key is the id plus
+`snapshot_date`. Joining to them needs a date as well as the id.
+
+**BigQuery does not enforce any of this.** The lines show how the data should link. dbt
+relationships tests check that it does.
+
+The model is in `erd/staging_erd.mwb` and opens in MySQL Workbench.
 
 ## Why three layers
 
