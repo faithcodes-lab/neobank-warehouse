@@ -23,6 +23,10 @@ models:
         description: The customer who holds the account.
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
       - name: account_type
         description: Current or savings.
         data_tests:
