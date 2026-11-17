@@ -14,10 +14,28 @@ models:
           - not_null
       - name: authorisation_event_id
         description: The card authorisation this payment settles.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_card_authorisations')
+                field: event_id
       - name: account_id
         description: The account charged or refunded.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_accounts')
+                field: account_id
       - name: merchant_id
         description: The merchant that claimed the money.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_merchants')
+                field: merchant_id
       - name: amount_minor
         description: The amount in minor units, such as pence or cents.
       - name: currency
@@ -32,4 +50,3 @@ models:
         description: The raw file the kept row came from.
       - name: ingestion_date
         description: The date of that file.
-        

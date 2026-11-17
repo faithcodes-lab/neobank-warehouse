@@ -16,8 +16,18 @@ models:
         description: The account whose card was used.
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_accounts')
+                field: account_id
       - name: merchant_id
         description: The merchant where the card was used.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_merchants')
+                field: merchant_id
       - name: mcc
         description: The merchant category code, kept as text.
       - name: amount_minor
