@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: dim_merchant
+    description: >
+      One row per merchant the bank's customers have paid. Used to look up the name,
+      category and country behind a merchant_id in the fact tables.
+    columns:
+      - name: merchant_id
+        description: The merchant's own id. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+      - name: merchant_name
+        description: The name customers see, such as Tesco or Pret.
+      - name: category
+        description: The bank's spending category, such as Groceries or Eating Out.
+      - name: mcc
+        description: Merchant category code from the card networks, such as 5812. Text, not a number.
+      - name: country
+        description: Two letter country code where the merchant trades, such as GB.
