@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: fct_transactions
+    description: >
+      One row per approved card authorisation, with what happened to the money. Status
+      is worked out from the payments that have arrived: pending with none, settled with
+      a capture, reversed with a capture and a refund. Report spend from
+      settled_amount_minor, not authorised_amount_minor, because tips and fuel change
+      the amount. Declined taps are not here, they are in fct_card_authorisations.
+    columns:
+      - name: transaction_id
+        description: The id of the card authorisation this transaction started with. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_card_authorisations')
+                field: authorisation_id
+      - name: account_id
+        description: The account whose card was used.
+        data_tests:
+          - not_null
+      - name: merchant_id
+        description: The merchant where the card was used. Links to dim_merchant.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_merchant')
+                field: merchant_id
+      - name: authorised_date
+        description: The day of the tap in UTC. Links to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: authorised_at
+        description: When the tap happened, in UTC.
+      - name: currency
+        description: Three letter currency code. Do not add amounts across currencies.
+      - name: authorised_amount_minor
+        description: The amount the bank approved at the till, in minor units.
+      - name: settled_amount_minor
+        description: >
+          The amount the merchant actually claimed, in minor units. Can be higher than
+          authorised for tips or lower for fuel. Empty while pending.
+        data_tests:
+          - not_null:
+              config:
+                where: "status in ('settled', 'reversed')"
+      - name: refunded_amount_minor
+        description: The amount given back, in minor units. Empty unless reversed.
+        data_tests:
+          - not_null:
+              config:
+                where: "status = 'reversed'"
+      - name: settled_at
+        description: When the merchant claimed the money, in UTC. Empty while pending.
+      - name: refunded_at
+        description: When the money was given back, in UTC. Empty unless reversed.
+      - name: status
+        description: Pending, settled or reversed, worked out from the payments that have arrived.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['pending', 'settled', 'reversed']
