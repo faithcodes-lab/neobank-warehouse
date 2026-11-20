@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: fct_card_authorisations
+    description: >
+      One row per card authorisation, approved or declined. Use it for questions about
+      taps, such as decline rates by reason or merchant. An authorisation is not spend,
+      because the amount can change when the payment settles, so report spend from
+      payments instead.
+    columns:
+      - name: authorisation_id
+        description: The authorisation's own id. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: The account whose card was used.
+        data_tests:
+          - not_null
+      - name: merchant_id
+        description: The merchant where the card was used. Links to dim_merchant.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_merchant')
+                field: merchant_id
+      - name: authorised_date
+        description: The day of the tap in UTC. Links to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: authorised_at
+        description: When the tap happened, in UTC.
+      - name: ingested_at
+        description: When the warehouse received it, in UTC.
+      - name: amount_minor
+        description: The amount asked for, in minor units such as pence or cents.
+      - name: currency
+        description: Three letter currency code. Do not add amounts across currencies.
+      - name: outcome
+        description: Approved or declined.
+      - name: is_approved
+        description: True when the bank approved the tap. The average of this is the approval rate.
+      - name: decline_reason
+        description: Why the tap was declined. Empty when approved.
