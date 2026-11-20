@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: dim_customer
+    description: >
+      One row per version of each customer (SCD2). A new version starts when the
+      customer's country or closed_date changes between daily snapshots. To find the
+      version valid on a given day, join on customer_id where the day is on or after
+      valid_from and before valid_to (or valid_to is empty).
+    columns:
+      - name: customer_key
+        description: One id per version, customer_id and version_number joined, such as cus_0010|2. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: The customer's own id. Repeats once per version.
+        data_tests:
+          - not_null
+          - unique:
+              config:
+                where: "is_current"
+      - name: version_number
+        description: 1 for the customer's first version, counting up with each change.
+      - name: full_name
+        description: The customer's name.
+      - name: country
+        description: Two letter country code the customer lived in during this version.
+      - name: date_of_birth
+        description: The customer's date of birth.
+      - name: signup_date
+        description: The day the customer joined the bank.
+      - name: closed_date
+        description: The day the customer left the bank. Empty while they are still a customer.
+      - name: valid_from
+        description: The first day this version was true.
+      - name: valid_to
+        description: The day the next version started. This version was true up to but not including it. Empty on the current version.
+      - name: is_current
+        description: True on the version that is true today.
