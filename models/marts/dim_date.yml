@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      One row per calendar day from 2020-01-01 to 2026-12-31. Generated rather than
+      loaded, because no source sends a calendar. Join a fact table's date to date_day
+      to filter or group by month, weekday or weekend.
+    columns:
+      - name: date_day
+        description: The calendar day. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+      - name: year
+        description: The year, such as 2026.
+      - name: quarter
+        description: The quarter of the year, 1 to 4.
+      - name: month
+        description: The month number, 1 to 12.
+      - name: month_name
+        description: The month written out, such as August.
+      - name: day_of_month
+        description: The day of the month, 1 to 31.
+      - name: day_of_week
+        description: The day of the week as a number. 1 is Sunday and 7 is Saturday.
+      - name: day_name
+        description: The day written out, such as Saturday.
+      - name: is_weekend
+        description: True on Saturdays and Sundays.
+      - name: week_start
+        description: The Monday of the week this day falls in.
+      - name: month_start
+        description: The first day of the month this day falls in.
