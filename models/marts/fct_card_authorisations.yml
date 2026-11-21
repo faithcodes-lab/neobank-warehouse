@@ -17,6 +17,10 @@ models:
         description: The account whose card was used.
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_account')
+                field: account_id    
       - name: merchant_id
         description: The merchant where the card was used. Links to dim_merchant.
         data_tests:
