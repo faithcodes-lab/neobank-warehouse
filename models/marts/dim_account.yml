@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: dim_account
+    description: >
+      One row per version of each account (SCD2). A new version starts when the
+      account's status or closed_date changes between daily snapshots. The first
+      version starts on opened_date. To find the version valid on a given day, join
+      on account_id where the day is on or after valid_from and before valid_to (or
+      valid_to is empty). Card taps are dated in UTC, so a tap just after local
+      midnight on the opening day can fall one day before valid_from.
+    columns:
+      - name: account_key
+        description: One id per version, account_id and version_number joined, such as acc_0012|2. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: The account's own id. Repeats once per version.
+        data_tests:
+          - not_null
+          - unique:
+              config:
+                where: "is_current"
+      - name: version_number
+        description: 1 for the account's first version, counting up with each change.
+      - name: customer_id
+        description: The customer who holds the account.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+      - name: account_type
+        description: The kind of account.
+      - name: currency
+        description: The currency the account is held in.
+      - name: status
+        description: open or closed during this version.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['open', 'closed']
+      - name: opened_date
+        description: The day the account was opened.
+      - name: closed_date
+        description: The day the account was closed. Empty while it is open.
+      - name: valid_from
+        description: The first day this version was true. For version 1 this is opened_date.
+      - name: valid_to
+        description: The day the next version started. This version was true up to but not including it. Empty on the current version.
+      - name: is_current
+        description: True on the version that is true today.
