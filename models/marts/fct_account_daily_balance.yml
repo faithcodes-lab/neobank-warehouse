@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: fct_account_daily_balance
+    description: >
+      One row per account per day from 1 July (or the opening day, if later) to the
+      last day of payment data. The balance is the running total of settled card
+      payments since 1 July: refunds add and captures take away. The data has no
+      deposits or opening balance, so balances are negative and show money spent.
+      The balance is semi additive. Add it up across accounts on one day, but never
+      across days, or the total will be many times too high.
+    columns:
+      - name: account_day_key
+        description: account_id and balance_date joined, such as acc_0005|2026-08-21. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: The account. Links to dim_account.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_account')
+                field: account_id
+      - name: balance_date
+        description: The day, in UTC. Links to dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: currency
+        description: The account's currency. Every amount on the row is in it.
+      - name: is_open
+        description: False from the day the account closed. Rows carry on after closing because some payments settle late.
+      - name: money_in_minor
+        description: Refunds settled that day, in minor units. 0 when there were none.
+        data_tests:
+          - not_null
+      - name: money_out_minor
+        description: Captures settled that day, in minor units. 0 when there were none.
+        data_tests:
+          - not_null
+      - name: settled_balance_minor
+        description: The balance at the end of the day, in minor units. Do not sum across days.
+        data_tests:
+          - not_null
