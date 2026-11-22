@@ -28,7 +28,8 @@ random.seed(42)
 # facts about the data that will be generated
 # The bank size and timeline
 START_DATE = datetime.date(2026, 7, 1)  # first day of the data to generate
-NUMBER_OF_DAYS = 92  # number of days to generate the data for
+# NUMBER_OF_DAYS = 92  # number of days to generate the data for
+NUMBER_OF_DAYS = (datetime.date.today() - START_DATE).days 
 STARTING_CUSTOMERS = 200  # number of customers to start with
 # probability that a customer has a savings account
 SAVINGS_ACCOUNT_PROBABILITY = 0.3
@@ -660,10 +661,16 @@ if __name__ == "__main__":
                         # the same settlement event, delivered again later
                         add_by_ingestion_date(payments_by_ingestion_date, redelivered(payment))
 
-    # after all 92 days, write one file per ingestion date
+    # after the last day, write one file per ingestion date. Files dated after the
+    # last day hold events that have not arrived yet, so they are left for a later run
+    last_day = today.isoformat() # turns it to text
+
     for ingestion_date, day_authorisations in sorted(authorisations_by_ingestion_date.items()):
-        write_ndjson(day_authorisations,
-                     f"data/card_authorisations/{ingestion_date}.ndjson")
+        # .item() hands out the dictionary as pairs of (label, stuff):
+        if ingestion_date <= last_day:
+            write_ndjson(day_authorisations,
+                         f"data/card_authorisations/{ingestion_date}.ndjson")
 
     for ingestion_date, day_payments in sorted(payments_by_ingestion_date.items()):
-        write_ndjson(day_payments, f"data/payments/{ingestion_date}.ndjson")
+        if ingestion_date <= last_day:
+            write_ndjson(day_payments, f"data/payments/{ingestion_date}.ndjson")

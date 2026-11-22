@@ -1,0 +1,3 @@
+dbt-core==1.12.5 # run dbt build
+dbt-bigquery==1.12.1 # run dbt build
+google-cloud-bigquery==3.46.1 # loader/load.py uses this to load data into BigQuery
