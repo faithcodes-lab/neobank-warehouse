@@ -1,0 +1,43 @@
+# Runs the whole pipeline every morning: make the data up to yesterday, load it
+# into BigQuery and build and test every dbt model. A failed step turns the run
+# red in the Actions tab, and GitHub emails the repo owner.
+
+name: pipeline
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # every day at 06:00 UTC
+  workflow_dispatch:     # adds a "Run workflow" button for running it by hand
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: get the code
+        uses: actions/checkout@v4
+
+      - name: install python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: install packages
+        run: pip install -r requirements.txt
+
+      - name: log in to google cloud as pipeline-robot
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: generate the data
+        run: python generator/generate.py
+
+      - name: load into bigquery
+        run: python loader/load.py
+
+      - name: build and test the warehouse
+        run: dbt build --profiles-dir ci

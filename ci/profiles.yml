@@ -1,0 +1,14 @@
+# dbt connection settings for the scheduled GitHub Actions run. It is a copy of the
+# laptop's dbt settings, placed inside the repo so the robot can find it.
+neobank_warehouse:
+  target: dev # use the settings dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth # how to login: use whoever is logged in.
+      project: neobank-warehouse
+      dataset: dbt_dev # the dataset where dbt will build models.
+      location: EU
+      threads: 4 # build up to 4 models at the same time
+      timeout_seconds: 300 # wait up to 5 minutes for a model to finish building
+      priority: interactive # run queries now, not when Big query is quiet.
