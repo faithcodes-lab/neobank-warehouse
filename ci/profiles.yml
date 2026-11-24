@@ -1,4 +1,5 @@
-# dbt connection settings for the scheduled GitHub Actions run. 
+# dbt connection settings for the scheduled GitHub Actions run. It is a copy of the
+# laptop's dbt settings, placed inside the repo so the robot can find it.
 neobank_warehouse:
   target: dev # use the settings dev
   outputs:

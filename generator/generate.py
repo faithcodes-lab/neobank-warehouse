@@ -28,8 +28,7 @@ random.seed(42)
 # facts about the data that will be generated
 # The bank size and timeline
 START_DATE = datetime.date(2026, 7, 1)  # first day of the data to generate
-# NUMBER_OF_DAYS = 92  # number of days to generate the data for
-NUMBER_OF_DAYS = (datetime.date.today() - START_DATE).days 
+NUMBER_OF_DAYS = (datetime.date.today() - START_DATE).days  # every day from the start up to yesterday
 STARTING_CUSTOMERS = 200  # number of customers to start with
 # probability that a customer has a savings account
 SAVINGS_ACCOUNT_PROBABILITY = 0.3
@@ -666,7 +665,6 @@ if __name__ == "__main__":
     last_day = today.isoformat() # turns it to text
 
     for ingestion_date, day_authorisations in sorted(authorisations_by_ingestion_date.items()):
-        # .item() hands out the dictionary as pairs of (label, stuff):
         if ingestion_date <= last_day:
             write_ndjson(day_authorisations,
                          f"data/card_authorisations/{ingestion_date}.ndjson")
